@@ -150,8 +150,8 @@ async function startTest() {
     try {
         const results = await runAll(plugins, config);
         updateProgress(results.length, plugins.length);
-        for (const r of results) {
-            updatePluginStatus(r.pluginId, r.status === 'success');
+        for (const result of results) {
+            updatePluginStatus(result.pluginId, result.status === 'success');
         }
         const testRun = finalizeTestRun(results, extraWarnings);
         await persistAndRefreshHistory(testRun);
@@ -161,35 +161,6 @@ async function startTest() {
 }
 
 // ===== Bootstrap =====
-
-async function bootstrap() {
-    const warnings = detectBrowserSupport();
-    const critical = warnings.some((w) => w.includes('Performance API'));
-
-    if (critical) {
-        if (isJsonMode()) {
-            document.body.textContent = JSON.stringify({
-                error: 'unsupported_browser', message: warnings[0],
-            }, null, 2);
-        } else {
-            const main = document.getElementById('main-content');
-            if (main) {
-                main.innerHTML = `<div class="error-state" role="alert">
-                    <span class="error-state-icon" aria-hidden="true">\u26A0\uFE0F</span>
-                    <h2>Unsupported Browser</h2>
-                    <p>${warnings[0]}</p></div>`;
-            }
-        }
-        return;
-    }
-
-    if (isJsonMode()) {
-        await bootstrapJsonMode();
-        return;
-    }
-
-    bootstrapHtmlMode(warnings);
-}
 
 async function bootstrapJsonMode() {
     try {
@@ -215,18 +186,49 @@ async function bootstrapJsonMode() {
     }
 }
 
-function bootstrapHtmlMode(warnings) {
+async function bootstrapHtmlMode(warnings) {
     const nonCritical = warnings.filter(
-        (w) => !w.includes('Performance API')
+        (warning) => !warning.includes('Performance API')
     );
     init({ onRunTest: startTest, onHistoryClick: loadHistoryEntry,
         warnings: nonCritical });
 
-    ensureHistoryManager().then((hm) => {
+    try {
+        const hm = await ensureHistoryManager();
         renderHistory(hm.loadAll());
-    }).catch(() => {
+    } catch {
         renderHistory([]);
-    });
+    }
+}
+
+async function bootstrap() {
+    const warnings = detectBrowserSupport();
+    const critical = warnings.some((warning) =>
+        warning.includes('Performance API'));
+
+    if (critical) {
+        if (isJsonMode()) {
+            document.body.textContent = JSON.stringify({
+                error: 'unsupported_browser', message: warnings[0],
+            }, null, 2);
+        } else {
+            const main = document.getElementById('main-content');
+            if (main) {
+                main.innerHTML = `<div class="error-state" role="alert">
+                    <span class="error-state-icon" aria-hidden="true">\u26A0\uFE0F</span>
+                    <h2>Unsupported Browser</h2>
+                    <p>${warnings[0]}</p></div>`;
+            }
+        }
+        return;
+    }
+
+    if (isJsonMode()) {
+        await bootstrapJsonMode();
+        return;
+    }
+
+    bootstrapHtmlMode(warnings);
 }
 
 bootstrap().catch((err) => {

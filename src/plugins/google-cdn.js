@@ -115,15 +115,18 @@ function computeFinalSpeed(samples) {
         return null;
     }
     if (samples.length < MIN_SAMPLES) {
-        return samples.reduce((t, v) => t + v, 0) / samples.length;
+        return samples.reduce((total, value) => total + value, 0)
+            / samples.length;
     }
-    const sorted = [...samples].sort((f, s) => f - s);
+    const sorted = [...samples].sort((first, second) => first - second);
     const tc = Math.max(1, Math.floor(samples.length * OUTLIER_TRIM_RATIO));
     const trimmed = sorted.slice(tc, sorted.length - tc);
     if (trimmed.length === 0) {
-        return sorted.reduce((t, v) => t + v, 0) / sorted.length;
+        return sorted.reduce((total, value) => total + value, 0)
+            / sorted.length;
     }
-    return trimmed.reduce((t, v) => t + v, 0) / trimmed.length;
+    return trimmed.reduce((total, value) => total + value, 0)
+        / trimmed.length;
 }
 
 /**
@@ -141,6 +144,42 @@ function buildResult({ status, speedMbps, durationMs, bytesTransferred,
     };
 }
 
+/**
+ * Runs the sampling loop on gstatic images.
+ *
+ * @param {{ fetchWorks: boolean, startTime: number, sampleDuration: number,
+ *   timeoutMs: number }} opts
+ * @returns {Promise<{samples: number[], totalBytes: number}>}
+ */
+async function runSamplingLoop({
+    fetchWorks, startTime, sampleDuration, timeoutMs,
+}) {
+    const samples = [];
+    let totalBytes = 0;
+    let idx = 0;
+
+    while (performance.now() - startTime < sampleDuration) {
+        if (performance.now() - startTime > timeoutMs) {
+            break;
+        }
+        const resourceUrl = GSTATIC_RESOURCES[
+            idx % GSTATIC_RESOURCES.length
+        ];
+        const sep = resourceUrl.includes('?') ? '&' : '?';
+        const cacheBust = `${resourceUrl}${sep}_=${Date.now()}`;
+        const sample = fetchWorks
+            ? await downloadViaFetch(cacheBust, timeoutMs)
+            : await downloadViaImage(cacheBust);
+        totalBytes += sample.bytes;
+        if (sample.speedMbps > 0
+            && performance.now() - startTime > WARMUP_DURATION_MS) {
+            samples.push(sample.speedMbps);
+        }
+        idx++;
+    }
+    return { samples, totalBytes };
+}
+
 // === Plugin ===
 
 const googleCdnPlugin = {
@@ -153,29 +192,12 @@ const googleCdnPlugin = {
         const startTime = performance.now();
         const sampleDuration = config.sampleDurationMs || SAMPLE_DURATION_MS;
         const timeoutMs = config.timeoutMs || DEFAULT_TIMEOUT_MS;
-        let totalBytes = 0;
-        const samples = [];
 
         try {
             const fetchWorks = await probeFetch();
-            let idx = 0;
-
-            while (performance.now() - startTime < sampleDuration) {
-                if (performance.now() - startTime > timeoutMs) {
-                    break;
-                }
-                const resourceUrl = GSTATIC_RESOURCES[idx % GSTATIC_RESOURCES.length];
-                const cacheBust = `${resourceUrl}${resourceUrl.includes('?') ? '&' : '?'}_=${Date.now()}`;
-                const sample = fetchWorks
-                    ? await downloadViaFetch(cacheBust, timeoutMs)
-                    : await downloadViaImage(cacheBust);
-                totalBytes += sample.bytes;
-                if (sample.speedMbps > 0
-                    && performance.now() - startTime > WARMUP_DURATION_MS) {
-                    samples.push(sample.speedMbps);
-                }
-                idx++;
-            }
+            const { samples, totalBytes } = await runSamplingLoop({
+                fetchWorks, startTime, sampleDuration, timeoutMs,
+            });
             return buildResult({
                 status: 'success', speedMbps: computeFinalSpeed(samples),
                 durationMs: Math.round(performance.now() - startTime),
@@ -187,7 +209,7 @@ const googleCdnPlugin = {
             return buildResult({
                 status: 'error', speedMbps: null,
                 durationMs: Math.round(performance.now() - startTime),
-                bytesTransferred: totalBytes,
+                bytesTransferred: 0,
                 errorMessage: error.message || 'Unknown error',
             });
         }

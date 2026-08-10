@@ -8,6 +8,9 @@ import { formatMbps, formatDuration } from './utils.js';
 
 const KIB = 1024;
 const MIB = 1024 * 1024;
+const ROW_INCONCLUSIVE = 'row-inconclusive';
+const BADGE_NEUTRAL = 'badge-neutral';
+const BADGE_ERROR = 'badge-error';
 
 // === HTML helpers (function declarations hoist) ===
 
@@ -36,7 +39,7 @@ function formatBytes(bytes) {
  */
 function getRowClass(disc, status) {
     if (status !== 'success') {
-        return 'row-inconclusive';
+        return ROW_INCONCLUSIVE;
     }
     if (!disc) {
         return '';
@@ -46,7 +49,7 @@ function getRowClass(disc, status) {
         possible_throttling: 'row-possible',
         strong_signal: 'row-strong',
     };
-    return mapRow[disc.classification] || 'row-inconclusive';
+    return mapRow[disc.classification] || ROW_INCONCLUSIVE;
 }
 
 /**
@@ -56,26 +59,25 @@ function getRowClass(disc, status) {
  */
 function getBadgeClass(disc, status) {
     if (status !== 'success') {
-        return 'badge-error';
+        return BADGE_ERROR;
     }
     if (!disc) {
-        return 'badge-neutral';
+        return BADGE_NEUTRAL;
     }
     const mapBadge = {
         normal: 'badge-success',
         possible_throttling: 'badge-warning',
         strong_signal: 'badge-danger',
     };
-    return mapBadge[disc.classification] || 'badge-neutral';
+    return mapBadge[disc.classification] || BADGE_NEUTRAL;
 }
 
 /**
- * @param {import('./types.js').TestResult} result
- * @param {boolean} isBaseline
- * @param {import('./types.js').Discrepancy|undefined} disc
+ * @param {{ result: import('./types.js').TestResult, isBaseline: boolean,
+ *   disc: import('./types.js').Discrepancy|undefined }} opts
  * @returns {string}
  */
-function getStatusBadge(result, isBaseline, disc) {
+function getStatusBadge({ result, isBaseline, disc }) {
     if (isBaseline) {
         return 'Baseline';
     }
@@ -125,14 +127,16 @@ function buildTable(run) {
 
     for (const result of results) {
         const isBaseline = result.pluginId === baselinePluginId;
-        const disc = discrepancies.find((d) => d.pluginId === result.pluginId);
+        const disc = discrepancies.find(
+            (discrepancy) => discrepancy.pluginId === result.pluginId
+        );
         const speed = result.status === 'success'
             ? formatMbps(result.downloadSpeedMbps) : '';
         const deviation = disc && disc.percentageDeviation !== null
             ? `${(disc.percentageDeviation > 0 ? '+' : '')
               + disc.percentageDeviation.toFixed(1)  }%`
             : '\u2014';
-        const badge = getStatusBadge(result, isBaseline, disc);
+        const badge = getStatusBadge({ result, isBaseline, disc });
         const badgeCls = isBaseline ? 'badge-neutral' : getBadgeClass(disc, result.status);
 
         rows += `<tr class="${getRowClass(disc, result.status)}">
@@ -183,7 +187,7 @@ function buildDetails(run) {
     if (!run.warnings || run.warnings.length === 0) {
         return '';
     }
-    const items = run.warnings.map((w) => `<li>${escape(w)}</li>`).join('');
+    const items = run.warnings.map((warning) => `<li>${escape(warning)}</li>`).join('');
     return `<details class="test-details fade-in">
         <summary>Warnings (${run.warnings.length})</summary><ul>${items}</ul></details>`;
 }

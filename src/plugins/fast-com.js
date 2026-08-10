@@ -39,7 +39,7 @@ async function getOcaUrls(token, timeoutMs) {
         const resp = await fetch(url, { signal: ctrl.signal });
         const data = await resp.json();
         if (data && Array.isArray(data.targets)) {
-            return data.targets.map((t) => t.url).filter(Boolean);
+            return data.targets.map((target) => target.url).filter(Boolean);
         }
         return null;
     } catch {
@@ -94,12 +94,10 @@ function getActualBytes(urlStart, fallback) {
 }
 
 /**
- * @param {string} url
- * @param {number} expectedBytes
- * @param {number} timeoutMs
+ * @param {{ url: string, expectedBytes: number, timeoutMs: number }} opts
  * @returns {Promise<{bytes: number, speedMbps: number, durationMs: number}>}
  */
-async function downloadFromOca(url, expectedBytes, timeoutMs) {
+async function downloadFromOca({ url, expectedBytes, timeoutMs }) {
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -125,7 +123,8 @@ function pickChunkSize(samples) {
     if (samples.length === 0) {
         return INITIAL_PROBE;
     }
-    const avg = samples.reduce((t, v) => t + v, 0) / samples.length;
+    const avg = samples.reduce((total, value) => total + value, 0)
+        / samples.length;
     if (avg < SLOW_SPEED) {
         return SMALL_PROBE;
     }
@@ -144,15 +143,18 @@ function computeFinalSpeed(samples) {
         return null;
     }
     if (samples.length < MIN_SAMPLES) {
-        return samples.reduce((t, v) => t + v, 0) / samples.length;
+        return samples.reduce((total, value) => total + value, 0)
+            / samples.length;
     }
-    const sorted = [...samples].sort((f, s) => f - s);
+    const sorted = [...samples].sort((first, second) => first - second);
     const tc = Math.max(1, Math.floor(samples.length * OUTLIER_TRIM_RATIO));
     const trimmed = sorted.slice(tc, sorted.length - tc);
     if (trimmed.length === 0) {
-        return sorted.reduce((t, v) => t + v, 0) / sorted.length;
+        return sorted.reduce((total, value) => total + value, 0)
+            / sorted.length;
     }
-    return trimmed.reduce((t, v) => t + v, 0) / trimmed.length;
+    return trimmed.reduce((total, value) => total + value, 0)
+        / trimmed.length;
 }
 
 /**
@@ -170,7 +172,61 @@ function buildResult({ status, speedMbps, durationMs, bytesTransferred,
     };
 }
 
-// === Plugin ===
+/**
+ * Acquires OCA URLs for download testing.
+ *
+ * @param {number} timeoutMs
+ * @returns {Promise<{urls: string[]|null, error: string|null}>}
+ */
+async function acquireOcaUrls(timeoutMs) {
+    const token = await extractToken(timeoutMs);
+    if (!token) {
+        return { urls: null, error: 'Could not reach fast.com API'
+            + ' \u2014 token extraction failed' };
+    }
+    const urls = await getOcaUrls(token, timeoutMs);
+    if (!urls || urls.length === 0) {
+        return { urls: null, error: 'Could not get OCA URLs'
+            + ' from fast.com API' };
+    }
+    return { urls, error: null };
+}
+
+/**
+ * Runs the sampling loop against OCA URLs.
+ *
+ * @param {{ urls: string[], startTime: number, sampleDuration: number,
+ *   timeoutMs: number }} opts
+ * @returns {Promise<{samples: number[], totalBytes: number}>}
+ */
+async function runSamplingLoop({
+    urls, startTime, sampleDuration, timeoutMs,
+}) {
+    const samples = [];
+    let totalBytes = 0;
+    let idx = 0;
+
+    while (performance.now() - startTime < sampleDuration) {
+        if (performance.now() - startTime > timeoutMs) {
+            break;
+        }
+        const baseUrl = urls[idx % urls.length];
+        const chunkSize = pickChunkSize(samples);
+        const rangeUrl = baseUrl.replace(
+            /range\/\d+-\d+/, `range/0-${chunkSize - 1}`
+        );
+        const sample = await downloadFromOca({
+            url: rangeUrl, expectedBytes: chunkSize, timeoutMs,
+        });
+        totalBytes += sample.bytes;
+        if (sample.speedMbps > 0
+            && performance.now() - startTime > WARMUP_DURATION_MS) {
+            samples.push(sample.speedMbps);
+        }
+        idx++;
+    }
+    return { samples, totalBytes };
+}
 
 const fastComPlugin = {
     id: 'fast-com',
@@ -182,47 +238,23 @@ const fastComPlugin = {
         const startTime = performance.now();
         const sampleDuration = config.sampleDurationMs || SAMPLE_DURATION_MS;
         const timeoutMs = config.timeoutMs || DEFAULT_TIMEOUT_MS;
-        let totalBytes = 0;
-        const samples = [];
 
         try {
-            const token = await extractToken(timeoutMs);
-            if (!token) {
+            const { urls, error: setupError } = await acquireOcaUrls(
+                timeoutMs
+            );
+            if (setupError) {
                 return buildResult({
                     status: 'error', speedMbps: null,
                     durationMs: Math.round(performance.now() - startTime),
-                    bytesTransferred: totalBytes,
-                    errorMessage: 'Could not reach fast.com API \u2014 token extraction failed',
-                });
-            }
-            const urls = await getOcaUrls(token, timeoutMs);
-            if (!urls || urls.length === 0) {
-                return buildResult({
-                    status: 'error', speedMbps: null,
-                    durationMs: Math.round(performance.now() - startTime),
-                    bytesTransferred: totalBytes,
-                    errorMessage: 'Could not get OCA URLs from fast.com API',
+                    bytesTransferred: 0,
+                    errorMessage: setupError,
                 });
             }
 
-            let idx = 0;
-            while (performance.now() - startTime < sampleDuration) {
-                if (performance.now() - startTime > timeoutMs) {
-                    break;
-                }
-                const baseUrl = urls[idx % urls.length];
-                const chunkSize = pickChunkSize(samples);
-                const rangeUrl = baseUrl.replace(
-                    /range\/\d+-\d+/, `range/0-${chunkSize - 1}`
-                );
-                const sample = await downloadFromOca(rangeUrl, chunkSize, timeoutMs);
-                totalBytes += sample.bytes;
-                if (sample.speedMbps > 0
-                    && performance.now() - startTime > WARMUP_DURATION_MS) {
-                    samples.push(sample.speedMbps);
-                }
-                idx++;
-            }
+            const { samples, totalBytes } = await runSamplingLoop({
+                urls, startTime, sampleDuration, timeoutMs,
+            });
 
             return buildResult({
                 status: 'success', speedMbps: computeFinalSpeed(samples),
@@ -235,7 +267,7 @@ const fastComPlugin = {
             return buildResult({
                 status: 'error', speedMbps: null,
                 durationMs: Math.round(performance.now() - startTime),
-                bytesTransferred: totalBytes,
+                bytesTransferred: 0,
                 errorMessage: error.message || 'Unknown error',
             });
         }

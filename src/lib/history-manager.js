@@ -43,25 +43,37 @@ function buildSummary(run) {
     if (!run.verdict) {
         return `${run.results.length} tests completed`;
     }
-    const v = run.verdict;
-    if (v.level === 'no_throttling') {
+    const { verdict } = run;
+    if (verdict.level === 'no_throttling') {
         return 'No throttling detected';
     }
-    if (v.level === 'possible_throttling' || v.level === 'strong_signal') {
-        const count = v.affectedServices.length;
+    if (verdict.level === 'possible_throttling'
+        || verdict.level === 'strong_signal') {
+        const count = verdict.affectedServices.length;
         if (count === 0) {
-            return v.message;
+            return verdict.message;
         }
-        const svc = v.affectedServices.join(', ');
+        const svc = verdict.affectedServices.join(', ');
         return `${count} service${count !== 1 ? 's' : ''} flagged: ${svc}`;
     }
-    if (v.level === 'inconclusive') {
+    if (verdict.level === 'inconclusive') {
         return 'Results inconclusive';
     }
     return 'No data';
 }
 
 storageOk = checkStorage();
+
+/** @param {import('./types.js').HistoryEntry[]} history @returns {string} */
+function pruneToFit(history) {
+    const pruned = [...history];
+    while (pruned.length > 1
+        && JSON.stringify(pruned).length > MAX_STORAGE_BYTES) {
+        pruned.pop();
+    }
+    return JSON.stringify(pruned).length <= MAX_STORAGE_BYTES
+        ? JSON.stringify(pruned) : '[]';
+}
 
 // === Exports ===
 
@@ -83,19 +95,12 @@ export function save(run) {
         while (history.length > MAX_ENTRIES) {
             history.pop();
         }
-        const ser = JSON.stringify(history);
-        if (ser.length > MAX_STORAGE_BYTES) {
-            while (history.length > 1) {
-                history.pop();
-                if (JSON.stringify(history).length <= MAX_STORAGE_BYTES) {
-                    break;
-                }
-            }
-        }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+        const serialized = pruneToFit(history);
+        localStorage.setItem(STORAGE_KEY, serialized);
         return true;
     } catch {
-        storageOk = false; return false;
+        storageOk = false;
+        return false;
     }
 }
 

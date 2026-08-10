@@ -32,12 +32,10 @@ function chunkSizes() {
 }
 
 /**
- * @param {string} url
- * @param {number} expectedBytes
- * @param {number} timeoutMs
+ * @param {{ url: string, expectedBytes: number, timeoutMs: number }} opts
  * @returns {Promise<{bytes: number, speedMbps: number, durationMs: number}>}
  */
-async function downloadAndMeasure(url, expectedBytes, timeoutMs) {
+async function downloadAndMeasure({ url, expectedBytes, timeoutMs }) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -73,20 +71,58 @@ function finalSpeed(samples) {
         return null;
     }
     if (samples.length < MIN_SAMPLES) {
-        return samples.reduce((t, v) => t + v, 0) / samples.length;
+        return samples.reduce((total, value) => total + value, 0)
+            / samples.length;
     }
-    const sorted = [...samples].sort((f, s) => f - s);
+    const sorted = [...samples].sort((first, second) => first - second);
     const tc = Math.max(1, Math.floor(samples.length * OUTLIER_TRIM_RATIO));
     const trimmed = sorted.slice(tc, sorted.length - tc);
     if (trimmed.length === 0) {
-        return sorted.reduce((t, v) => t + v, 0) / sorted.length;
+        return sorted.reduce((total, value) => total + value, 0)
+            / sorted.length;
     }
-    return trimmed.reduce((t, v) => t + v, 0) / trimmed.length;
+    return trimmed.reduce((total, value) => total + value, 0)
+        / trimmed.length;
+}
+
+const TARGET_NAME = 'Cloudflare (Baseline)';
+
+/**
+ * @param {{ status: string, speedMbps: number|null, durationMs: number,
+ *   bytesTransferred: number, errorMessage: string|null }} opts
+ * @returns {import('../lib/types.js').TestResult}
+ */
+function buildResult({ status, speedMbps, durationMs, bytesTransferred,
+    errorMessage }) {
+    return {
+        targetName: TARGET_NAME, pluginId: 'cloudflare',
+        status, downloadSpeedMbps: speedMbps,
+        durationMs, bytesTransferred, errorMessage,
+        timestamp: new Date().toISOString(),
+    };
+}
+
+/**
+ * Determines next chunk size based on sample timing.
+ *
+ * @param {number} durationMs
+ * @param {number} currentIndex
+ * @param {number} maxIndex
+ * @returns {number}
+ */
+function adjustChunkIndex(durationMs, currentIndex, maxIndex) {
+    if (durationMs > SLOW_SAMPLE_THRESHOLD_MS) {
+        return Math.max(0, currentIndex - 1);
+    }
+    if (durationMs < MIN_SAMPLE_DURATION_MS) {
+        return Math.min(maxIndex, currentIndex + 1);
+    }
+    return currentIndex;
 }
 
 const cloudflarePlugin = {
     id: 'cloudflare',
-    name: 'Cloudflare (Baseline)',
+    name: TARGET_NAME,
     description: 'Download speed from Cloudflare speed test endpoint',
     category: 'cdn',
 
@@ -107,38 +143,37 @@ const cloudflarePlugin = {
                 }
                 const sz = sizes[Math.min(chunkIndex, sizes.length - 1)];
                 const url = `${CLOUDFLARE_URL}?bytes=${sz}&ts=${Date.now()}`;
-                const sample = await downloadAndMeasure(url, sz, timeoutMs);
+                const sample = await downloadAndMeasure({
+                    url, expectedBytes: sz, timeoutMs,
+                });
                 totalBytes += sample.bytes;
                 if (sample.speedMbps > 0
                     && performance.now() - startTime > WARMUP_DURATION_MS) {
                     samples.push(sample.speedMbps);
                 }
-                if (sample.durationMs > SLOW_SAMPLE_THRESHOLD_MS) {
-                    chunkIndex = Math.max(0, chunkIndex - 1);
-                } else if (sample.durationMs < MIN_SAMPLE_DURATION_MS) {
-                    chunkIndex = Math.min(sizes.length - 1, chunkIndex + 1);
-                }
+                chunkIndex = adjustChunkIndex(
+                    sample.durationMs, chunkIndex,
+                    sizes.length - 1
+                );
             }
 
             const speed = finalSpeed(samples);
-            return {
-                targetName: 'Cloudflare (Baseline)', pluginId: 'cloudflare',
+            const errorMessage = speed === null
+                ? 'Not enough valid samples collected' : null;
+            return buildResult({
                 status: speed !== null ? 'success' : 'error',
-                downloadSpeedMbps: speed,
+                speedMbps: speed,
                 durationMs: Math.round(performance.now() - startTime),
                 bytesTransferred: totalBytes,
-                errorMessage: speed === null ? 'Not enough valid samples collected' : null,
-                timestamp: new Date().toISOString(),
-            };
+                errorMessage,
+            });
         } catch (error) {
-            return {
-                targetName: 'Cloudflare (Baseline)', pluginId: 'cloudflare',
-                status: 'error', downloadSpeedMbps: null,
+            return buildResult({
+                status: 'error', speedMbps: null,
                 durationMs: Math.round(performance.now() - startTime),
                 bytesTransferred: totalBytes,
                 errorMessage: error.message || 'Unknown error',
-                timestamp: new Date().toISOString(),
-            };
+            });
         }
     },
 };

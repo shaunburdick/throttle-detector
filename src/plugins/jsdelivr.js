@@ -78,19 +78,19 @@ function computeFinalSpeed(samples) {
         return null;
     }
     if (samples.length < MIN_SAMPLES) {
-        const sum = samples.reduce((t, v) => t + v, 0);
-        return sum / samples.length;
+        return samples.reduce((total, value) => total + value, 0)
+            / samples.length;
     }
-    const sorted = [...samples].sort((f, s) => f - s);
+    const sorted = [...samples].sort((first, second) => first - second);
     const trimCount = Math.max(1,
         Math.floor(samples.length * OUTLIER_TRIM_RATIO));
     const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
     if (trimmed.length === 0) {
-        const sum = sorted.reduce((t, v) => t + v, 0);
-        return sum / sorted.length;
+        return sorted.reduce((total, value) => total + value, 0)
+            / sorted.length;
     }
-    const sum = trimmed.reduce((t, v) => t + v, 0);
-    return sum / trimmed.length;
+    return trimmed.reduce((total, value) => total + value, 0)
+        / trimmed.length;
 }
 
 /**

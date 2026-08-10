@@ -11,6 +11,22 @@ const EQUAL_MARGIN = 1;
 // === Helpers (function declarations hoist) ===
 
 /**
+ * @param {import('./types.js').TestResult} target
+ * @param {number|null} dev
+ * @param {string} dir
+ * @param {boolean} sig
+ * @param {string} cls
+ * @returns {import('./types.js').Discrepancy}
+ */
+function makeDisc({ target, dev, dir, sig, cls }) {
+    return {
+        targetName: target.targetName, pluginId: target.pluginId,
+        percentageDeviation: dev, direction: dir,
+        isSignificant: sig, classification: cls,
+    };
+}
+
+/**
  * @param {import('./types.js').TestResult[]} successful
  * @returns {import('./types.js').TestResult}
  */
@@ -31,30 +47,41 @@ function selectBaseline(successful) {
 function computeDiscrepancy(target, baselineSpeed) {
     const targetSpeed = target.downloadSpeedMbps;
     if (targetSpeed === null || baselineSpeed === 0 || targetSpeed === 0) {
-        return makeDisc(target, null, 'unknown', false, 'inconclusive');
+        return makeDisc({
+            target, dev: null, dir: 'unknown',
+            sig: false, cls: 'inconclusive',
+        });
     }
     const dev = ((targetSpeed - baselineSpeed) / baselineSpeed) * 100;
     const absDev = Math.abs(dev);
-    const dir = absDev <= EQUAL_MARGIN ? 'equal' : dev < 0 ? 'slower' : 'faster';
-    const cls = absDev <= NORMAL_THRESHOLD ? 'normal'
-        : dir === 'slower' ? (absDev > STRONG_THRESHOLD ? 'strong_signal' : 'possible_throttling')
-            : 'inconclusive';
-    return makeDisc(target, Math.round(dev * 10) / 10, dir, absDev > NORMAL_THRESHOLD, cls);
+    let dir;
+    if (absDev <= EQUAL_MARGIN) {
+        dir = 'equal';
+    } else if (dev < 0) {
+        dir = 'slower';
+    } else {
+        dir = 'faster';
+    }
+    let cls;
+    if (absDev <= NORMAL_THRESHOLD) {
+        cls = 'normal';
+    } else if (dir === 'slower') {
+        cls = absDev > STRONG_THRESHOLD
+            ? 'strong_signal' : 'possible_throttling';
+    } else {
+        cls = 'inconclusive';
+    }
+    return makeDisc({
+        target, dev: Math.round(dev * 10) / 10, dir,
+        sig: absDev > NORMAL_THRESHOLD, cls,
+    });
 }
 
-/**
- * @param {import('./types.js').TestResult} target
- * @param {number|null} dev
- * @param {string} dir
- * @param {boolean} sig
- * @param {string} cls
- * @returns {import('./types.js').Discrepancy}
- */
-function makeDisc(target, dev, dir, sig, cls) {
+/** @returns {import('./types.js').Verdict} */
+function noDataVerdict() {
     return {
-        targetName: target.targetName, pluginId: target.pluginId,
-        percentageDeviation: dev, direction: dir,
-        isSignificant: sig, classification: cls,
+        level: 'no_data', message: 'No tests have been run yet',
+        affectedServices: [], indicator: 'gray',
     };
 }
 
@@ -74,22 +101,24 @@ function generateVerdict(discList, results) {
             affectedServices: [], indicator: 'gray',
         };
     }
-    const strong = discList.filter((d) => d.classification === 'strong_signal');
-    const possible = discList.filter((d) => d.classification === 'possible_throttling');
+    const strong = discList.filter((disc) => disc.classification === 'strong_signal');
+    const possible = discList.filter(
+        (disc) => disc.classification === 'possible_throttling'
+    );
 
     if (strong.length > 0) {
         return {
             level: 'strong_signal',
-            message: `Strong throttling signal for ${strong.map((d) => d.targetName).join(', ')}`,
-            affectedServices: strong.map((d) => d.targetName),
+            message: `Strong throttling signal for ${strong.map((disc) => disc.targetName).join(', ')}`,
+            affectedServices: strong.map((disc) => disc.targetName),
             indicator: 'red',
         };
     }
     if (possible.length > 0) {
         return {
             level: 'possible_throttling',
-            message: `Possible throttling on ${possible.map((d) => d.targetName).join(', ')}`,
-            affectedServices: possible.map((d) => d.targetName),
+            message: `Possible throttling on ${possible.map((disc) => disc.targetName).join(', ')}`,
+            affectedServices: possible.map((disc) => disc.targetName),
             indicator: 'yellow',
         };
     }
@@ -119,7 +148,11 @@ export function analyzeResults(results) {
         (res) => res.status === 'success' && res.downloadSpeedMbps !== null
     );
     if (successful.length === 0) {
-        const discList = results.map((res) => makeDisc(res, null, 'unknown', false, 'inconclusive'));
+        const discList = results.map((res) =>
+            makeDisc({
+                target: res, dev: null, dir: 'unknown',
+                sig: false, cls: 'inconclusive',
+            }));
         return {
             baseline: null, discrepancies: discList,
             verdict: {
@@ -146,15 +179,10 @@ export function analyzeResults(results) {
         if (res.pluginId === baseline.pluginId) {
             continue;
         }
-        discList.push(makeDisc(res, null, 'unknown', false, 'inconclusive'));
+        discList.push(makeDisc({
+            target: res, dev: null, dir: 'unknown',
+            sig: false, cls: 'inconclusive',
+        }));
     }
     return { baseline, discrepancies: discList, verdict: generateVerdict(discList, results) };
-}
-
-/** @returns {import('./types.js').Verdict} */
-function noDataVerdict() {
-    return {
-        level: 'no_data', message: 'No tests have been run yet',
-        affectedServices: [], indicator: 'gray',
-    };
 }

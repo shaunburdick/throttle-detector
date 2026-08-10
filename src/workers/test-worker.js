@@ -15,26 +15,13 @@ function postError(pluginId, message) {
 }
 
 /**
- * Reconstructs and executes the plugin's run() function.
- * eval() is necessary because functions cannot be transferred to Workers
- * via postMessage — only their string representation survives.
+ * Coerces a possibly-malformed result into a well-formed TestResult.
  *
- * @param {{ pluginId: string, pluginName: string, pluginRunCode: string,
- *   config: object }} opts
- * @returns {Promise<import('../lib/types.js').TestResult>}
+ * @param {{ result: object, pluginName: string, pluginId: string,
+ *   elapsed: number }} opts
+ * @returns {import('../lib/types.js').TestResult}
  */
-async function executeRun({ pluginId, pluginName, pluginRunCode, config }) {
-
-    const runFunction = eval(`(${pluginRunCode})`);
-
-    if (typeof runFunction !== 'function') {
-        throw new Error('Deserialized plugin code is not a function');
-    }
-
-    const startTime = Date.now();
-    const result = await runFunction(config);
-    const elapsed = Date.now() - startTime;
-
+function normalizeResult({ result, pluginName, pluginId, elapsed }) {
     return {
         targetName: pluginName || result.targetName || 'Unknown',
         pluginId: pluginId || result.pluginId || 'unknown',
@@ -45,6 +32,29 @@ async function executeRun({ pluginId, pluginName, pluginRunCode, config }) {
         errorMessage: result.errorMessage || null,
         timestamp: result.timestamp || new Date().toISOString(),
     };
+}
+
+/**
+ * Reconstructs and executes the plugin's run() function.
+ * eval() is necessary because functions cannot be transferred to Workers
+ * via postMessage — only their string representation survives.
+ *
+ * @param {{ pluginId: string, pluginName: string, pluginRunCode: string,
+ *   config: object }} opts
+ * @returns {Promise<import('../lib/types.js').TestResult>}
+ */
+async function executeRun({ pluginId, pluginName, pluginRunCode, config }) {
+    const runFunction = eval(`(${pluginRunCode})`);
+
+    if (typeof runFunction !== 'function') {
+        throw new Error('Deserialized plugin code is not a function');
+    }
+
+    const startTime = Date.now();
+    const result = await runFunction(config);
+    return normalizeResult({
+        result, pluginName, pluginId, elapsed: Date.now() - startTime,
+    });
 }
 
 self.onmessage = async (event) => {
