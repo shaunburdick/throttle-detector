@@ -163,6 +163,7 @@ const googleCdnPlugin = {
     name: 'Google CDN',
     description: 'Download speed from Google CDN infrastructure',
     category: 'manufactured',
+    workerCompatible: false,
 
     async run(config) {
         const startTime = performance.now();

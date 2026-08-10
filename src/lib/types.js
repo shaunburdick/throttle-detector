@@ -27,6 +27,9 @@
  * @property {string} name - Human-readable display name.
  * @property {string} description - One-line description.
  * @property {'streaming'|'cdn'|'manufactured'} category - Test category.
+ * @property {boolean} [workerCompatible=true] - Whether the plugin can run in a
+ *           Web Worker. Plugins using DOM APIs (e.g., Image for CORS fallback)
+ *           should set this to false so they run on the main thread instead.
  * @property {function(TestConfig): Promise<TestResult>} run - Execute the test.
  */
 
