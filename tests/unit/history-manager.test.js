@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { save, loadAll, getByRunId, clear, isAvailable } from '../../src/lib/history-manager.js';
+import { save, loadAll, getByRunId, clear, deleteRun, deleteAll, isAvailable } from '../../src/lib/history-manager.js';
 import { generateRunId } from '../../src/lib/utils.js';
 
 /**
@@ -128,6 +128,59 @@ describe('History Manager', () => {
             save(createMockRun());
             clear();
             expect(loadAll()).toEqual([]);
+        });
+    });
+
+    describe('deleteRun', () => {
+        it('deletes a single entry by runId and returns true', () => {
+            save(createMockRun({ runId: 'keep-me' }));
+            save(createMockRun({ runId: 'delete-me' }));
+            save(createMockRun({ runId: 'also-keep' }));
+            const result = deleteRun('delete-me');
+            expect(result).toBe(true);
+            const entries = loadAll();
+            expect(entries).toHaveLength(2);
+            expect(entries.map((e) => e.runId)).toEqual(
+                ['also-keep', 'keep-me']
+            );
+        });
+
+        it('returns false when runId does not exist', () => {
+            save(createMockRun({ runId: 'only' }));
+            const result = deleteRun('nonexistent');
+            expect(result).toBe(false);
+            expect(loadAll()).toHaveLength(1);
+        });
+
+        it('handles deleting the only entry (storage key removed)', () => {
+            save(createMockRun({ runId: 'solo' }));
+            deleteRun('solo');
+            expect(loadAll()).toEqual([]);
+            // Verify the storage key is absent
+            expect(
+                localStorage.getItem('throttle-detector-history')
+            ).toBeNull();
+        });
+
+        it('returns false when no history exists', () => {
+            const result = deleteRun('anything');
+            expect(result).toBe(false);
+        });
+    });
+
+    describe('deleteAll', () => {
+        it('deletes all entries and returns the count', () => {
+            save(createMockRun());
+            save(createMockRun());
+            save(createMockRun());
+            const count = deleteAll();
+            expect(count).toBe(3);
+            expect(loadAll()).toEqual([]);
+        });
+
+        it('returns 0 when no history exists', () => {
+            const count = deleteAll();
+            expect(count).toBe(0);
         });
     });
 

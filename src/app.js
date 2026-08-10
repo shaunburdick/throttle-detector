@@ -60,6 +60,7 @@ async function ensureHistoryManager() {
     const mod = await import('./lib/history-manager.js');
     historyManager = {
         save: mod.save, loadAll: mod.loadAll, getByRunId: mod.getByRunId,
+        deleteRun: mod.deleteRun, deleteAll: mod.deleteAll,
     };
     return historyManager;
 }
@@ -127,6 +128,52 @@ async function loadHistoryEntry(runId) {
     }
 }
 
+/**
+ * Announces a deletion message to the screen reader aria-live region.
+ *
+ * @param {string} msg
+ */
+function announceDeletion(msg) {
+    const live = document.getElementById('status-live');
+    if (!live) {
+        return;
+    }
+    live.textContent = '';
+    requestAnimationFrame(() => {
+        live.textContent = msg;
+    });
+}
+
+/**
+ * Deletes a single history entry by runId and refreshes the UI.
+ *
+ * @param {string} runId
+ */
+async function deleteHistoryEntry(runId) {
+    try {
+        const hm = await ensureHistoryManager();
+        hm.deleteRun(runId);
+        renderHistory(hm.loadAll());
+        announceDeletion('Test run deleted');
+    } catch {
+        void 0;
+    }
+}
+
+/**
+ * Deletes all history entries and refreshes the UI.
+ */
+async function deleteAllHistory() {
+    try {
+        const hm = await ensureHistoryManager();
+        const deletedCount = hm.deleteAll();
+        renderHistory(hm.loadAll());
+        announceDeletion(`${deletedCount} test runs deleted`);
+    } catch {
+        void 0;
+    }
+}
+
 // ===== Core Logic =====
 
 /** Runs a speed test using all registered plugins. */
@@ -190,8 +237,13 @@ async function bootstrapHtmlMode(warnings) {
     const nonCritical = warnings.filter(
         (warning) => !warning.includes('Performance API')
     );
-    init({ onRunTest: startTest, onHistoryClick: loadHistoryEntry,
-        warnings: nonCritical });
+    init({
+        onRunTest: startTest,
+        onHistoryClick: loadHistoryEntry,
+        onHistoryDelete: deleteHistoryEntry,
+        onHistoryDeleteAll: deleteAllHistory,
+        warnings: nonCritical,
+    });
 
     try {
         const hm = await ensureHistoryManager();

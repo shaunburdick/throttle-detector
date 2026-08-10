@@ -363,6 +363,19 @@ footer[role="contentinfo"] {
     margin: 0 0 var(--spacing-md);
 }
 
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.history-header h2 {
+    margin: 0;
+}
+
 .history-list {
     list-style: none;
     padding: 0;
@@ -373,29 +386,29 @@ footer[role="contentinfo"] {
 }
 
 .history-list-item {
-    /* Structural wrapper only */
+    display: flex;
+    align-items: stretch;
+}
+
+.history-list-item + .history-list-item {
+    border-top: 1px solid var(--color-border-light);
 }
 
 button.history-entry {
     padding: var(--spacing-md);
     border: none;
-    border-bottom: 1px solid var(--color-border-light);
     background: none;
     font-family: inherit;
     font-size: inherit;
     color: inherit;
     text-align: inherit;
-    width: 100%;
+    flex: 1;
     cursor: pointer;
     transition: background-color var(--transition-fast);
     display: flex;
     justify-content: space-between;
     align-items: center;
     min-height: 44px;
-}
-
-button.history-entry:last-child {
-    border-bottom: none;
 }
 
 button.history-entry:hover {
@@ -414,6 +427,132 @@ button.history-entry:focus-visible {
 
 .history-entry-summary {
     font-weight: 500;
+}
+
+/* Delete button on history entries */
+.btn-delete-history {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    min-height: 44px;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: var(--font-size-lg);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: color var(--transition-fast),
+        background-color var(--transition-fast);
+    flex-shrink: 0;
+    border-radius: var(--border-radius);
+}
+
+.btn-delete-history:hover {
+    color: var(--color-danger);
+    background-color: var(--color-danger-bg);
+}
+
+.btn-delete-history:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -2px;
+}
+
+/* Delete All button */
+.btn-delete-all {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-xs) var(--spacing-md);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    font-family: inherit;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+    background-color: var(--color-bg);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    min-width: 44px;
+    min-height: 44px;
+    transition: background-color var(--transition-fast),
+        color var(--transition-fast),
+        border-color var(--transition-fast);
+}
+
+.btn-delete-all:hover {
+    background-color: var(--color-danger-bg);
+    color: var(--color-danger);
+    border-color: var(--color-danger);
+}
+
+.btn-delete-all:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 2px;
+}
+
+/* ===== Inline Delete Confirmation ===== */
+.inline-confirm {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: var(--color-danger-bg);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--border-radius);
+    font-size: var(--font-size-sm);
+    animation: fadeIn 0.2s ease;
+}
+
+.inline-confirm-message {
+    color: var(--color-text);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.btn-confirm-yes,
+.btn-confirm-cancel {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px var(--spacing-sm);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    font-family: inherit;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    min-height: 28px;
+    transition: opacity var(--transition-fast),
+        background-color var(--transition-fast);
+}
+
+.btn-confirm-yes {
+    background-color: var(--color-danger);
+    color: #ffffff;
+}
+
+.btn-confirm-yes:hover {
+    opacity: 0.85;
+}
+
+.btn-confirm-yes:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 2px;
+}
+
+.btn-confirm-cancel {
+    background-color: var(--color-bg);
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border);
+}
+
+.btn-confirm-cancel:hover {
+    background-color: var(--color-bg-alt);
+}
+
+.btn-confirm-cancel:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 2px;
 }
 
 /* ===== Status Area (ARIA live) ===== */
@@ -559,6 +698,15 @@ button.history-entry:focus-visible {
         flex-direction: column;
         align-items: flex-start;
         gap: var(--spacing-xs);
+    }
+
+    .history-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .btn-delete-all {
+        align-self: flex-start;
     }
 }
 
