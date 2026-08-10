@@ -140,6 +140,55 @@ export function clear() {
     }
 }
 
+/**
+ * Deletes a single history entry by runId.
+ *
+ * @param {string} runId - The runId of the entry to delete.
+ * @returns {boolean} True if the entry was found and deleted.
+ */
+export function deleteRun(runId) {
+    if (!storageOk) {
+        return false;
+    }
+    try {
+        const history = loadFromStorage();
+        const index = history.findIndex((entry) => entry.runId === runId);
+        if (index === -1) {
+            return false;
+        }
+        history.splice(index, 1);
+        if (history.length === 0) {
+            localStorage.removeItem(STORAGE_KEY);
+        } else {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+        }
+        return true;
+    } catch {
+        storageOk = false;
+        return false;
+    }
+}
+
+/**
+ * Deletes all history entries.
+ *
+ * @returns {number} The number of entries that were deleted.
+ */
+export function deleteAll() {
+    if (!storageOk) {
+        return 0;
+    }
+    try {
+        const history = loadFromStorage();
+        const count = history.length;
+        localStorage.removeItem(STORAGE_KEY);
+        return count;
+    } catch {
+        storageOk = false;
+        return 0;
+    }
+}
+
 /** @returns {boolean} */
 export function isAvailable() {
     return storageOk;

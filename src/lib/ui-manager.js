@@ -11,6 +11,8 @@ import { formatTimestamp } from './utils.js';
 let currentState = 'initial';
 let onRunTestCb = null;
 let onHistoryClickCb = null;
+let onHistoryDeleteCb = null;
+let onHistoryDeleteAllCb = null;
 
 // ===== Helpers =====
 
@@ -93,11 +95,17 @@ function render(warnings) {
 // ===== Exports =====
 
 /**
- * @param {{ onRunTest: Function, onHistoryClick?: Function, warnings?: string[] }} opts
+ * @param {{ onRunTest: Function, onHistoryClick?: Function,
+ *     onHistoryDelete?: Function, onHistoryDeleteAll?: Function,
+ *     warnings?: string[] }} opts
  */
-export function init({ onRunTest, onHistoryClick, warnings = [] }) {
+export function init(
+    { onRunTest, onHistoryClick, onHistoryDelete, onHistoryDeleteAll, warnings = [] }
+) {
     onRunTestCb = onRunTest;
     onHistoryClickCb = onHistoryClick;
+    onHistoryDeleteCb = onHistoryDelete;
+    onHistoryDeleteAllCb = onHistoryDeleteAll;
     currentState = 'initial';
     render(warnings);
 }
@@ -220,25 +228,51 @@ export async function setResults(run) {
     announce(`Tests complete. ${msg}`);
 }
 
-/** @param {import('./types.js').HistoryEntry[]} entries */
-export function renderHistory(entries) {
-    const area = document.getElementById(HISTORY_AREA_ID);
-    if (!area) {
-        return;
-    }
+// ---- History rendering helpers ----
 
-    if (!entries || entries.length === 0) {
-        area.innerHTML = '<section class="history-section">'
-            + '<h2>Test History</h2>'
-            + '<div class="empty-state">'
-            + '<p>No tests run yet. '
-            + 'Run your first test to start tracking your connection.</p>'
-            + '</div></section>';
-        return;
-    }
+/** @param {HTMLElement} area */
+function renderEmptyHistory(area) {
+    area.innerHTML = '<section class="history-section">'
+        + '<h2>Test History</h2>'
+        + '<div class="empty-state">'
+        + '<p>No tests run yet. '
+        + 'Run your first test to start tracking your connection.</p>'
+        + '</div></section>';
+}
+
+/**
+ * Shows a confirmation dialog using the native browser confirm() for simplicity
+ * and screen-reader accessibility.
+ *
+ * @param {string} message
+ * @returns {boolean}
+ */
+function confirmDeletion(message) {
+    return window.confirm(message);
+}
+
+/**
+ * Builds the HTML string for the history list.
+ *
+ * @param {import('./types.js').HistoryEntry[]} entries
+ * @param {number} count
+ * @returns {string}
+ */
+function buildHistoryHtml(entries, count) {
+    const deleteAllHtml = onHistoryDeleteAllCb
+        ? '<button class="btn-delete-all"'
+            + ' aria-label="Delete all test runs">'
+            + `Delete All (${count})</button>`
+        : '';
 
     let items = '';
     for (const entry of entries) {
+        const deleteBtnHtml = onHistoryDeleteCb
+            ? '<button class="btn-delete-history"'
+                + ` data-run-id="${escAttr(entry.runId)}"`
+                + ` aria-label="Delete test run from ${formatTimestamp(entry.timestamp)}">`
+                + '\u00D7</button>'
+            : '';
         items += '<li class="history-list-item">'
             + '<button class="history-entry"'
             + ` aria-label="Test run from ${formatTimestamp(entry.timestamp)}"`
@@ -246,18 +280,69 @@ export function renderHistory(entries) {
             + '<span class="history-entry-summary">'
             + `${esc(entry.summary)}</span>`
             + '<span class="history-entry-timestamp">'
-            + `${formatTimestamp(entry.timestamp)}</span></button></li>`;
+            + `${formatTimestamp(entry.timestamp)}</span></button>`
+            + `${deleteBtnHtml}</li>`;
     }
 
-    area.innerHTML = '<section class="history-section"'
+    return '<section class="history-section"'
         + ' aria-labelledby="history-heading">'
+        + '<div class="history-header">'
         + '<h2 id="history-heading">Test History</h2>'
+        + `${deleteAllHtml}</div>`
         + `<ul class="history-list" role="list">${items}</ul></section>`;
+}
 
+/** @param {HTMLElement} area */
+function wireHistoryEntries(area) {
     for (const el of area.querySelectorAll('.history-entry')) {
         el.addEventListener('click', () => {
             if (onHistoryClickCb) {
                 onHistoryClickCb(el.getAttribute('data-run-id'));
+            }
+        });
+    }
+}
+
+/** @param {HTMLElement} area */
+function wireDeleteButtons(area) {
+    for (const el of area.querySelectorAll('.btn-delete-history')) {
+        el.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const runId = el.getAttribute('data-run-id');
+            if (!runId || !onHistoryDeleteCb) {
+                return;
+            }
+            if (confirmDeletion('Delete this test run?')) {
+                onHistoryDeleteCb(runId);
+            }
+        });
+    }
+}
+
+/** @param {import('./types.js').HistoryEntry[]} entries */
+export function renderHistory(entries) {
+    const area = document.getElementById(HISTORY_AREA_ID);
+    if (!area) {
+        return;
+    }
+
+    const count = entries ? entries.length : 0;
+
+    if (!entries || count === 0) {
+        renderEmptyHistory(area);
+        return;
+    }
+
+    area.innerHTML = buildHistoryHtml(entries, count);
+
+    wireHistoryEntries(area);
+    wireDeleteButtons(area);
+
+    const deleteAllBtn = area.querySelector('.btn-delete-all');
+    if (deleteAllBtn && onHistoryDeleteAllCb) {
+        deleteAllBtn.addEventListener('click', () => {
+            if (confirmDeletion(`Delete all ${count} test runs?`)) {
+                onHistoryDeleteAllCb();
             }
         });
     }

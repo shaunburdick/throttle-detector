@@ -53,6 +53,14 @@ export default [
         },
     },
     {
+        // ui-manager uses window.confirm() for accessible deletion
+        // confirmations per the project specification
+        files: ['src/lib/ui-manager.js'],
+        rules: {
+            'no-alert': 'off',
+        },
+    },
+    {
         files: ['tests/**/*.test.js', 'tests/**/mock-*.js', 'tests/helpers/**/*.js'],
         languageOptions: {
             globals: {
