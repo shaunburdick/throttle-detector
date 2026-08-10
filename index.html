@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Detect ISP throttling by running differential speed tests against multiple service origins">
+  <title>ISP Throttle Detector</title>
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <header role="banner">
+    <h1>ISP Throttle Detector</h1>
+    <p class="subtitle">Compare download speeds across different services to detect ISP throttling</p>
+  </header>
+
+  <main id="main-content">
+    <!-- UI will be rendered by app.js -->
+  </main>
+
+  <footer role="contentinfo">
+    <p>All tests run locally in your browser. No data is sent to any server beyond the speed test downloads.</p>
+  </footer>
+
+  <noscript>
+    <div class="noscript-warning" role="alert">
+      <p>JavaScript is required to run speed tests. Please enable JavaScript in your browser settings.</p>
+    </div>
+  </noscript>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

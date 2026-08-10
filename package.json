@@ -1,0 +1,21 @@
+{
+  "name": "throttle-detector",
+  "version": "1.0.0",
+  "description": "Client-side ISP throttling detector using differential speed tests",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "start": "npx serve . -p 8000"
+  },
+  "devDependencies": {
+    "eslint": "^10.0.0",
+    "eslint-config-shaunburdick": "latest",
+    "vitest": "^3.0.0",
+    "jsdom": "^26.0.0"
+  }
+}
