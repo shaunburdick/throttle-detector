@@ -75,5 +75,36 @@ describe('Test Runner', () => {
             expect(typeof result.bytesTransferred).toBe('number');
             expect(result.timestamp).toBeTruthy();
         });
+
+        it('runs worker-incompatible plugins alongside worker-compatible ones', async () => {
+            const mainPlugin = {
+                ...createSuccessPlugin({ id: 'main-only', speedMbps: 30 }),
+                workerCompatible: false,
+            };
+            const workerPlugin = createSuccessPlugin({
+                id: 'worker-ok', speedMbps: 100,
+            });
+            const plugins = [workerPlugin, mainPlugin];
+            const results = await runAll(plugins, DEFAULT_CONFIG);
+            expect(results).toHaveLength(2);
+            const succeeded = results.filter(
+                (res) => res.status === 'success'
+            );
+            expect(succeeded).toHaveLength(2);
+        });
+
+        it('runs all main-thread-only plugins sequentially', async () => {
+            const plugins = [
+                { ...createSuccessPlugin({ id: 'main-a', speedMbps: 10 }),
+                    workerCompatible: false },
+                { ...createSuccessPlugin({ id: 'main-b', speedMbps: 20 }),
+                    workerCompatible: false },
+            ];
+            const results = await runAll(plugins, DEFAULT_CONFIG);
+            expect(results).toHaveLength(2);
+            for (const result of results) {
+                expect(result.status).toBe('success');
+            }
+        });
     });
 });

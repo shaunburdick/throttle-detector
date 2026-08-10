@@ -20,6 +20,16 @@ const FAST_SPEED = 200;
 const SMALL_PROBE = 128 * KIB;
 const INITIAL_PROBE = 256 * KIB;
 
+/**
+ * Well-known token hardcoded in fast.com's app bundle.
+ *
+ * This is the base64 of "asdfasdlfnsdafhasdfhkalf" \u2014 a template value
+ * Netflix has used in every version of their speed test since 2016.
+ * Using this as a fallback lets us skip parsing the bundle altogether
+ * when the extraction fails (CORS, bundle format changes, etc.).
+ */
+const FALLBACK_TOKEN = 'YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm';
+
 // === Helpers (function declarations hoist) ===
 
 /**
@@ -46,6 +56,15 @@ async function getOcaUrls(token, timeoutMs) {
 }
 
 /**
+ * Attempts to extract the API token from fast.com's app JS bundle.
+ *
+ * Strategy (tried in order):
+ * 1. Fetch fast.com HTML, find the app bundle script src, fetch the bundle,
+ *    and regex-extract the token using a broad, minification-safe pattern.
+ * 2. If step 1 fails for any reason (CORS, bundle format change, etc.),
+ *    fall back to the well-known hardcoded token that has been stable in
+ *    fast.com's codebase since 2016.
+ *
  * @param {number} timeoutMs
  * @returns {Promise<string|null>}
  */
@@ -57,15 +76,27 @@ async function extractToken(timeoutMs) {
         const html = await htmlResp.text();
         const sm = html.match(/<script[^>]*src="([^"]*app[^"]*\.js)"/i);
         if (!sm) {
-            return null;
+            return FALLBACK_TOKEN;
         }
         const appJsUrl = sm[1].startsWith('http') ? sm[1] : `https://fast.com${sm[1]}`;
         const jsResp = await fetch(appJsUrl, { signal: ctrl.signal });
         const jsText = await jsResp.text();
-        const tm = jsText.match(/token\s*[:=]\s*["']([A-Za-z0-9_-]{20,})["']/);
-        return tm ? tm[1] : null;
+
+        // Try the primary pattern first: token:"..."" or token:'...'
+        let tm = jsText.match(/token\s*[:=]\s*["']([^"']{20,})["']/);
+        if (tm) {
+            return tm[1];
+        }
+
+        // Fallback: try a broader search for any quoted string near "token"
+        tm = jsText.match(/token["\s:=]+([A-Za-z0-9_+/=]{20,})/);
+        if (tm && tm[1]) {
+            return tm[1];
+        }
+
+        return FALLBACK_TOKEN;
     } catch {
-        return null;
+        return FALLBACK_TOKEN;
     } finally {
         clearTimeout(tid);
     }

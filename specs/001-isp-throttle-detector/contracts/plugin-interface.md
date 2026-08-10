@@ -14,6 +14,7 @@ Every plugin module MUST export a single object conforming to this shape:
   name: string,
   description: string,
   category: 'streaming' | 'cdn' | 'manufactured',
+  workerCompatible?: boolean,  // default true; set false for DOM-only APIs
   run(config: TestConfig): Promise<TestResult>
 }
 ```
@@ -26,6 +27,7 @@ Every plugin module MUST export a single object conforming to this shape:
 | `name` | `string` | ✅ Yes | Human-readable. Max 50 chars. Displayed in UI. Example: `'Fast.com (Netflix)'` |
 | `description` | `string` | ✅ Yes | One-line, max 120 chars. Shown in tooltips/info. Example: `'Download speed from Netflix Open Connect CDN'` |
 | `category` | `'streaming' \| 'cdn' \| 'manufactured'` | ✅ Yes | Used for grouping in results table. `streaming`: streaming service infrastructure. `cdn`: general-purpose CDN. `manufactured`: known-file downloads from specific origins |
+| `workerCompatible` | `boolean` | No | **Default: `true`**. Set to `false` if the plugin uses DOM APIs that don't exist in Web Workers (e.g., `Image` for CORS fallback). Plugins with `workerCompatible: false` run sequentially on the main thread instead of in workers. |
 | `run` | `(config: TestConfig) => Promise<TestResult>` | ✅ Yes | The test execution function. Must be async. Must handle all errors internally. Must NOT throw — errors returned as TestResult with status 'error' |
 
 ### run() Method Contract
@@ -49,6 +51,7 @@ Every plugin module MUST export a single object conforming to this shape:
 2. All dependencies must be imported/included within the function body or passed via config
 3. Cannot reference `this` (function is called standalone, not as method)
 4. Can use built-in browser APIs (fetch, performance, AbortController, Image, etc.)
+5. Plugins using DOM-only APIs (like `Image`) should set `workerCompatible: false` to run on the main thread instead
 
 **Thread Safety**: Plugins run in isolation (one per Worker). They must not:
 1. Mutate shared state (localStorage, DOM)

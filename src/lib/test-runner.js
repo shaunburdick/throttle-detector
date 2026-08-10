@@ -219,7 +219,34 @@ async function runSequential(plugins, config) {
 // === Exports ===
 
 /**
+ * Splits plugins into worker-compatible and main-thread-only groups.
+ *
+ * Plugins default to worker-compatible (workerCompatible !== false).
+ * Plugins explicitly flagged `workerCompatible: false` run sequentially
+ * on the main thread.
+ *
+ * @param {import('./types.js').TestPlugin[]} plugins
+ * @returns {{ workerPlugins: import('./types.js').TestPlugin[], mainPlugins: import('./types.js').TestPlugin[] }}
+ */
+function splitByWorkerCompat(plugins) {
+    const workerPlugins = [];
+    const mainPlugins = [];
+    for (const plugin of plugins) {
+        if (plugin.workerCompatible === false) {
+            mainPlugins.push(plugin);
+        } else {
+            workerPlugins.push(plugin);
+        }
+    }
+    return { workerPlugins, mainPlugins };
+}
+
+/**
  * Runs all registered plugins and returns their results.
+ *
+ * Worker-compatible plugins run in parallel Web Workers.
+ * Main-thread-only plugins (workerCompatible: false) run sequentially
+ * on the main thread after workers complete.
  *
  * @param {import('./types.js').TestPlugin[]} plugins
  * @param {import('./types.js').TestConfig} config
@@ -228,7 +255,17 @@ async function runSequential(plugins, config) {
 export async function runAll(plugins, config) {
     const supportsWorkers = typeof Worker !== 'undefined';
     if (supportsWorkers) {
-        return runInWorkers(plugins, config);
+        const { workerPlugins, mainPlugins } = splitByWorkerCompat(plugins);
+        const results = [];
+        if (workerPlugins.length > 0) {
+            const workerResults = await runInWorkers(workerPlugins, config);
+            results.push(...workerResults);
+        }
+        if (mainPlugins.length > 0) {
+            const mainResults = await runSequential(mainPlugins, config);
+            results.push(...mainResults);
+        }
+        return results;
     }
     return runSequential(plugins, config);
 }
