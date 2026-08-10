@@ -129,12 +129,14 @@ export function average(values) {
 }
 
 /**
- * Generates a unique run ID based on current timestamp.
+ * Generates a unique run ID based on current timestamp with a counter
+ * to prevent collisions when multiple runs start in the same second.
  *
- * Format: "run-YYYYMMDDTHHmmssZ"
+ * Format: "run-YYYYMMDDTHHmmss-NZ"
  *
  * @returns {string} Unique run ID
  */
+let idCounter = 0;
 export function generateRunId() {
     const now = new Date();
     const parts = [
@@ -145,9 +147,55 @@ export function generateRunId() {
         String(now.getUTCHours()).padStart(2, '0'),
         String(now.getUTCMinutes()).padStart(2, '0'),
         String(now.getUTCSeconds()).padStart(2, '0'),
-        'Z',
     ];
-    return `run-${parts.join('')}`;
+    idCounter += 1;
+    return `run-${parts.join('')}-${idCounter}Z`;
+}
+
+/**
+ * Default trim ratio for trimmed mean (10% from each tail).
+ *
+ * @type {number}
+ */
+const DEFAULT_TRIM_RATIO = 0.1;
+
+/**
+ * Minimum number of samples for trimmed mean trimming.
+ * Below this count, a simple average is used.
+ *
+ * @type {number}
+ */
+const DEFAULT_MIN_SAMPLES = 3;
+
+/**
+ * Computes the trimmed mean of an array of values.
+ *
+ * Sorts the array, trims a configurable ratio from each end, and averages
+ * the remaining values. Falls back to simple average if fewer than
+ * minSamples are provided. Returns null for empty/null input.
+ *
+ * @param {number[]|null|undefined} samples - Array of numeric values
+ * @param {{trimRatio?: number, minSamples?: number}} [opts]
+ * @returns {number|null} Trimmed mean, or null if no valid samples
+ */
+export function trimmedMean(samples, opts) {
+    const { trimRatio = DEFAULT_TRIM_RATIO, minSamples = DEFAULT_MIN_SAMPLES } = opts || {};
+    if (!samples || samples.length === 0) {
+        return null;
+    }
+    if (samples.length < minSamples) {
+        return samples.reduce((total, value) => total + value, 0)
+            / samples.length;
+    }
+    const sorted = [...samples].sort((first, second) => first - second);
+    const trimCount = Math.max(1, Math.floor(sorted.length * trimRatio));
+    const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
+    if (trimmed.length === 0) {
+        return sorted.reduce((total, value) => total + value, 0)
+            / sorted.length;
+    }
+    return trimmed.reduce((total, value) => total + value, 0)
+        / trimmed.length;
 }
 
 /**

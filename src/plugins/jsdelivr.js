@@ -5,16 +5,12 @@
  */
 
 import { registerPlugin } from '../lib/plugin-registry.js';
+import { bytesToMbps, trimmedMean } from '../lib/utils.js';
 
 const SAMPLE_DURATION_MS = 10000;
 const WARMUP_DURATION_MS = 1000;
-const BYTES_PER_SECOND = 1000;
-const BITS_PER_BYTE = 8;
-const BYTES_PER_MILLION = 1_000_000;
 const DEFAULT_TIMEOUT_MS = 30000;
 const FETCH_TIMEOUT_MS = 15000;
-const OUTLIER_TRIM_RATIO = 0.1;
-const MIN_SAMPLES = 3;
 
 const JSDELIVR_URLS = [
     'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',
@@ -62,35 +58,13 @@ async function downloadMeasure(url, timeoutMs) {
             return zeroResult();
         }
 
-        const bytesPerSec = bytes / (durationMs / BYTES_PER_SECOND);
-        const speedMbps = (bytesPerSec * BITS_PER_BYTE) / BYTES_PER_MILLION;
+        const speedMbps = bytesToMbps(bytes, durationMs);
         return { bytes, speedMbps, durationMs };
     } catch {
         return zeroResult();
     } finally {
         clearTimeout(timeoutId);
     }
-}
-
-/** @param {number[]} samples @returns {number|null} */
-function computeFinalSpeed(samples) {
-    if (samples.length === 0) {
-        return null;
-    }
-    if (samples.length < MIN_SAMPLES) {
-        return samples.reduce((total, value) => total + value, 0)
-            / samples.length;
-    }
-    const sorted = [...samples].sort((first, second) => first - second);
-    const trimCount = Math.max(1,
-        Math.floor(samples.length * OUTLIER_TRIM_RATIO));
-    const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
-    if (trimmed.length === 0) {
-        return sorted.reduce((total, value) => total + value, 0)
-            / sorted.length;
-    }
-    return trimmed.reduce((total, value) => total + value, 0)
-        / trimmed.length;
 }
 
 /**
@@ -142,12 +116,13 @@ const jsdelivrPlugin = {
                 }
                 idx++;
             }
+            const speed = trimmedMean(samples);
             return buildResult({
-                status: 'success',
-                speedMbps: computeFinalSpeed(samples),
+                status: speed !== null ? 'success' : 'error',
+                speedMbps: speed,
                 durationMs: Math.round(performance.now() - startTime),
                 bytesTransferred: totalBytes,
-                errorMessage: samples.length < MIN_SAMPLES
+                errorMessage: speed === null
                     ? 'Not enough valid samples collected' : null,
             });
         } catch (error) {

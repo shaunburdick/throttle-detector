@@ -8,6 +8,7 @@ import {
     average,
     generateRunId,
     bytesToMbps,
+    trimmedMean,
 } from '../../src/lib/utils.js';
 
 describe('formatMbps', () => {
@@ -154,9 +155,10 @@ describe('generateRunId', () => {
     it('returns a string matching the expected format', () => {
         const id = generateRunId();
         expect(id.startsWith('run-')).toBe(true);
-        // Format: run-YYYYMMDDTHHmmssZ (second-based, minimum 17 chars)
+        // Format: run-YYYYMMDDTHHmmss-NZ (minimum ~21 chars)
         expect(id.length).toBeGreaterThanOrEqual(20);
-        expect(id.endsWith('Z')).toBe(true);
+        // Counter suffix ends with Z
+        expect(id.match(/-(\d+)Z$/)).toBeTruthy();
     });
 });
 
@@ -181,5 +183,46 @@ describe('bytesToMbps', () => {
         const ms = 5000;
         const result = bytesToMbps(bytes, ms);
         expect(result).toBeCloseTo(83.89, 0);
+    });
+});
+
+describe('trimmedMean', () => {
+    it('returns null for empty or null input', () => {
+        expect(trimmedMean([])).toBeNull();
+        expect(trimmedMean(null)).toBeNull();
+        expect(trimmedMean()).toBeNull();
+    });
+
+    it('returns simple average when fewer than minSamples', () => {
+        expect(trimmedMean([100, 200])).toBe(150);
+        expect(trimmedMean([42])).toBe(42);
+    });
+
+    it('trims 10% from each tail by default', () => {
+        // 10 samples: trim 1 from each end, average middle 8
+        const samples = [1, 2, 3, 4, 5, 100, 7, 8, 9, 999];
+        const result = trimmedMean(samples);
+        // After sort: [1,2,3,4,5,7,8,9,100,999], trim 1 each: [2,3,4,5,7,8,9,100]
+        // Average = (2+3+4+5+7+8+9+100)/8 = 138/8 = 17.25
+        expect(result).toBeCloseTo(17.25, 2);
+    });
+
+    it('does not mutate the input array', () => {
+        const input = [10, 1, 100, 5, 3];
+        const copy = [...input];
+        trimmedMean(input);
+        expect(input).toEqual(copy);
+    });
+
+    it('handles all-identical values', () => {
+        expect(trimmedMean([50, 50, 50, 50, 50])).toBeCloseTo(50);
+    });
+
+    it('respects custom trimRatio and minSamples', () => {
+        // 20% trim ratio, minSamples=5
+        const samples = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        // 20% of 10 = 2 each end, trimmed: [3,4,5,6,7,8], avg = 5.5
+        const result = trimmedMean(samples, { trimRatio: 0.2, minSamples: 5 });
+        expect(result).toBeCloseTo(5.5, 2);
     });
 });

@@ -71,8 +71,16 @@ function pruneToFit(history) {
         && JSON.stringify(pruned).length > MAX_STORAGE_BYTES) {
         pruned.pop();
     }
-    return JSON.stringify(pruned).length <= MAX_STORAGE_BYTES
-        ? JSON.stringify(pruned) : '[]';
+    if (JSON.stringify(pruned).length <= MAX_STORAGE_BYTES) {
+        return JSON.stringify(pruned);
+    }
+    // Single entry still too large — strip results data, keep only metadata
+    const slim = pruned.slice(0, 1).map((entry) => {
+        const copy = { ...entry };
+        delete copy.results;
+        return copy;
+    });
+    return JSON.stringify(slim);
 }
 
 // === Exports ===
