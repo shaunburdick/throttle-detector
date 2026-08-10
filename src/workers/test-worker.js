@@ -1,8 +1,15 @@
 /**
  * Test Worker — generic Web Worker executor for speed test plugins.
  *
+ * Dynamically imports plugin modules so that all helper functions,
+ * constants, and utility imports are naturally available in the worker's
+ * scope.  Each plugin module self-registers in the worker's own
+ * plugin-registry, and the worker retrieves it by ID to call run().
+ *
  * @module workers/test-worker
  */
+
+import { getPlugin } from '../lib/plugin-registry.js';
 
 /**
  * Posts an error message back to the main thread.
@@ -34,46 +41,40 @@ function normalizeResult({ result, pluginName, pluginId, elapsed }) {
     };
 }
 
-/**
- * Reconstructs and executes the plugin's run() function.
- * eval() is necessary because functions cannot be transferred to Workers
- * via postMessage — only their string representation survives.
- *
- * @param {{ pluginId: string, pluginName: string, pluginRunCode: string,
- *   config: object }} opts
- * @returns {Promise<import('../lib/types.js').TestResult>}
- */
-async function executeRun({ pluginId, pluginName, pluginRunCode, config }) {
-    const runFunction = eval(`(${pluginRunCode})`);
-
-    if (typeof runFunction !== 'function') {
-        throw new Error('Deserialized plugin code is not a function');
-    }
-
-    const startTime = Date.now();
-    const result = await runFunction(config);
-    return normalizeResult({
-        result, pluginName, pluginId, elapsed: Date.now() - startTime,
-    });
-}
-
 self.onmessage = async (event) => {
-    const { type, pluginId, pluginName, pluginRunCode, config } = event.data;
+    const { type, pluginId, pluginName, config } = event.data;
 
     if (type !== 'run') {
         return;
     }
-    if (!pluginRunCode || !config) {
+    if (!pluginId || !config) {
         postError(pluginId || 'unknown',
-            'Invalid run message: missing pluginRunCode or config');
+            'Invalid run message: missing pluginId or config');
         return;
     }
 
     try {
-        const result = await executeRun({
-            pluginId, pluginName, pluginRunCode, config,
+        // Dynamically import the plugin module — it self-registers
+        // in the worker's own plugin-registry.
+        await import(`../plugins/${pluginId}.js`);
+
+        const plugin = getPlugin(pluginId);
+        if (!plugin) {
+            throw new Error(
+                `Plugin "${pluginId}" not found in registry after import`
+            );
+        }
+
+        const startTime = Date.now();
+        const result = await plugin.run(config);
+
+        self.postMessage({
+            type: 'result',
+            result: normalizeResult({
+                result, pluginName, pluginId,
+                elapsed: Date.now() - startTime,
+            }),
         });
-        self.postMessage({ type: 'result', result });
     } catch (error) {
         postError(pluginId || 'unknown',
             error.message || 'Unknown worker error');
