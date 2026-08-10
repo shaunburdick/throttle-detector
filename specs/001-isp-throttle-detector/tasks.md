@@ -18,15 +18,15 @@
 
 **Purpose**: Project initialization, tooling, and basic structure
 
-- [ ] T001 Set up project scaffolding: create `index.html`, `src/`, `tests/`, `test-assets/` directory structure per plan.md
-- [ ] T002 Initialize npm project with `package.json` (name, version, type:module, scripts for test/lint/build)
-- [ ] T003 [P] Install development dependencies: `vitest`, `jsdom`, `eslint`, `eslint-config-shaunburdick` per style skill
-- [ ] T004 [P] Configure `.editorconfig` from `@shaunburdick/style` per style skill
-- [ ] T005 [P] Configure ESLint with `eslint-config-shaunburdick` in `eslint.config.js`
-- [ ] T006 [P] Configure Vitest in `vite.config.js` with jsdom environment
-- [ ] T007 [P] Create `index.html` with semantic HTML shell: `<header>`, `<main>`, `<footer>`, `<noscript>` fallback, CSS link, `<script type="module" src="src/app.js">`
-- [ ] T008 [P] Generate test asset binary files: `test-assets/1mb.bin`, `test-assets/10mb.bin`, `test-assets/25mb.bin` (can use `dd` or Node.js script)
-- [ ] T009 Run `npm run lint && npm test` to verify clean baseline (no source files yet, should pass on empty)
+- [x] T001 Set up project scaffolding: create `index.html`, `src/`, `tests/`, `test-assets/` directory structure per plan.md
+- [x] T002 Initialize npm project with `package.json` (name, version, type:module, scripts for test/lint/build)
+- [x] T003 [P] Install development dependencies: `vitest`, `jsdom`, `eslint`, `eslint-config-shaunburdick` per style skill
+- [x] T004 [P] Configure `.editorconfig` from `@shaunburdick/style` per style skill
+- [x] T005 [P] Configure ESLint with `eslint-config-shaunburdick` in `eslint.config.js`
+- [x] T006 [P] Configure Vitest in `vite.config.js` with jsdom environment
+- [x] T007 [P] Create `index.html` with semantic HTML shell: `<header>`, `<main>`, `<footer>`, `<noscript>` fallback, CSS link, `<script type="module" src="src/app.js">`
+- [x] T008 [P] Generate test asset binary files: `test-assets/1mb.bin`, `test-assets/10mb.bin`, `test-assets/25mb.bin` (can use `dd` or Node.js script)
+- [x] T009 Run `npm run lint && npm test` to verify clean baseline (no source files yet, should pass on empty)
 
 ---
 
@@ -36,11 +36,11 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T010 Create `src/lib/utils.js` with shared utility functions: `formatMbps(speed)`, `formatDuration(ms)`, `formatTimestamp(iso)`, `clamp(value, min, max)`, `median(values)`, `generateRunId()`
-- [ ] T011 [P] Write unit tests for `src/lib/utils.js` in `tests/unit/utils.test.js` — test all formatting, median, clamp, runId generation
-- [ ] T012 [P] Create `src/lib/plugin-registry.js` with `registerPlugin()`, `getPlugins()`, `getPlugin()`, `getPluginCount()`, `clearPlugins()` per `contracts/test-module-registration.md`
-- [ ] T013 [P] Write contract tests for plugin registry in `tests/contract/plugin-interface.test.js` — validate registration, deduplication, clearing
-- [ ] T014 Create `src/styles/main.css` with CSS Custom Properties for theming: `--color-*`, `--spacing-*`, `--font-*`, base styles, utility classes. Include WCAG 2.2 AA compliant color palette (4.5:1 text contrast, 3:1 large text)
+- [x] T010 Create `src/lib/utils.js` with shared utility functions: `formatMbps(speed)`, `formatDuration(ms)`, `formatTimestamp(iso)`, `clamp(value, min, max)`, `median(values)`, `generateRunId()`
+- [x] T011 [P] Write unit tests for `src/lib/utils.js` in `tests/unit/utils.test.js` — test all formatting, median, clamp, runId generation
+- [x] T012 [P] Create `src/lib/plugin-registry.js` with `registerPlugin()`, `getPlugins()`, `getPlugin()`, `getPluginCount()`, `clearPlugins()` per `contracts/test-module-registration.md`
+- [x] T013 [P] Write contract tests for plugin registry in `tests/contract/plugin-interface.test.js` — validate registration, deduplication, clearing
+- [x] T014 Create `src/styles/main.css` with CSS Custom Properties for theming: `--color-*`, `--spacing-*`, `--font-*`, base styles, utility classes. Include WCAG 2.2 AA compliant color palette (4.5:1 text contrast, 3:1 large text)
 
 ---
 
@@ -52,24 +52,24 @@
 
 ### Tests for User Story 1
 
-- [ ] T015 [P] [US1] Create mock test plugin helpers in `tests/helpers/mock-plugin.js` — factory for creating predictable TestPlugin instances (configurable speed, delay, failure mode)
-- [ ] T016 [P] [US1] Write unit tests for `src/lib/test-runner.js` in `tests/unit/test-runner.test.js` — test plugin loading, parallel execution, result collection, timeout handling, error isolation
-- [ ] T017 [P] [US1] Write unit tests for `src/lib/results-analyzer.js` in `tests/unit/results-analyzer.test.js` — test baseline selection, discrepancy calculation, classification thresholds, verdict generation
-- [ ] T018 [P] [US1] Write integration test for full test flow in `tests/integration/full-flow.test.js` — mock plugins, run through runner+analyzer+presenter, verify output
+- [x] T015 [P] [US1] Create mock test plugin helpers in `tests/helpers/mock-plugin.js` — factory for creating predictable TestPlugin instances (configurable speed, delay, failure mode)
+- [x] T016 [P] [US1] Write unit tests for `src/lib/test-runner.js` in `tests/unit/test-runner.test.js` — test plugin loading, parallel execution, result collection, timeout handling, error isolation
+- [x] T017 [P] [US1] Write unit tests for `src/lib/results-analyzer.js` in `tests/unit/results-analyzer.test.js` — test baseline selection, discrepancy calculation, classification thresholds, verdict generation
+- [x] T018 [P] [US1] Write integration test for full test flow in `tests/integration/full-flow.test.js` — mock plugins, run through runner+analyzer+presenter, verify output
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] Create `src/lib/test-runner.js` — implements TestRunner: `runAll(plugins, config) → Promise<TestResult[]>`, Web Worker dispatch, abort/timeout, sequential fallback, per `contracts/worker-message-format.md`
-- [ ] T020 [US1] Create `src/workers/test-worker.js` — Web Worker executor: receives plugin code + config, executes `run()`, posts result/error back, handles abort signal via MessagePort, per `contracts/worker-message-format.md`
-- [ ] T021 [US1] Create `src/lib/results-analyzer.js` — implements `analyzeResults(results) → { baseline, discrepancies, verdict }`, baseline selection logic, discrepancy calculation, classification thresholds (≤15% normal, 15-30% possible, >30% strong)
-- [ ] T022 [US1] Create `src/lib/results-presenter.js` — implements `presentHtml(run)`, `presentJson(run)`, generates comparison table with proper `<table>`, `<caption>`, `<thead>`, `<tbody>`, `<th scope>`, color-coded rows with text labels
-- [ ] T023 [US1] Create `src/lib/ui-manager.js` — UI state machine: `initial → running → complete → error-full`, button enable/disable, progress bar with `role="progressbar"` + aria attributes, ARIA live region for status updates
-- [ ] T024 [US1] Create `src/plugins/fast-com.js` — fast.com plugin: token extraction (fetch fast.com → parse app.js URL → fetch app.js → extract token → call API → get OCA URLs → parallel download → measure speed), adaptive payload, error handling
-- [ ] T025 [US1] Create `src/plugins/cloudflare.js` — Cloudflare baseline plugin: download from `speed.cloudflare.com/__down?bytes=N`, adaptive payload sizing, Performance API timing, proper CORS/Timing-Allow-Origin usage
-- [ ] T026 [US1] Create `src/plugins/google-cdn.js` — Google CDN manufactured test: attempt fetch() first, fall back to `new Image()` + Performance API, adaptive payload
-- [ ] T027 [US1] Create `src/plugins/jsdelivr.js` — jsDelivr CDN manufactured test: download large npm package file from `cdn.jsdelivr.net`, adaptive payload, full CORS support
-- [ ] T028 [US1] Create `src/app.js` — entry point: import plugins (triggers registration), detect `?format=json`, initialize UI or JSON mode, wire up "Run Test" button → TestRunner → Analyzer → Presenter pipeline, browser API detection (FR-031)
-- [ ] T029 [US1] Implement all 10 edge cases from spec: all tests fail, no Web Workers, CORS blocked, very fast connection, very slow connection, missing Performance API, localStorage full, rapid clicks, empty history, JSON mode no data
+- [x] T019 [US1] Create `src/lib/test-runner.js` — implements TestRunner: `runAll(plugins, config) → Promise<TestResult[]>`, Web Worker dispatch, abort/timeout, sequential fallback, per `contracts/worker-message-format.md`
+- [x] T020 [US1] Create `src/workers/test-worker.js` — Web Worker executor: receives plugin code + config, executes `run()`, posts result/error back, handles abort signal via MessagePort, per `contracts/worker-message-format.md`
+- [x] T021 [US1] Create `src/lib/results-analyzer.js` — implements `analyzeResults(results) → { baseline, discrepancies, verdict }`, baseline selection logic, discrepancy calculation, classification thresholds (≤15% normal, 15-30% possible, >30% strong)
+- [x] T022 [US1] Create `src/lib/results-presenter.js` — implements `presentHtml(run)`, `presentJson(run)`, generates comparison table with proper `<table>`, `<caption>`, `<thead>`, `<tbody>`, `<th scope>`, color-coded rows with text labels
+- [x] T023 [US1] Create `src/lib/ui-manager.js` — UI state machine: `initial → running → complete → error-full`, button enable/disable, progress bar with `role="progressbar"` + aria attributes, ARIA live region for status updates
+- [x] T024 [US1] Create `src/plugins/fast-com.js` — fast.com plugin: token extraction (fetch fast.com → parse app.js URL → fetch app.js → extract token → call API → get OCA URLs → parallel download → measure speed), adaptive payload, error handling
+- [x] T025 [US1] Create `src/plugins/cloudflare.js` — Cloudflare baseline plugin: download from `speed.cloudflare.com/__down?bytes=N`, adaptive payload sizing, Performance API timing, proper CORS/Timing-Allow-Origin usage
+- [x] T026 [US1] Create `src/plugins/google-cdn.js` — Google CDN manufactured test: attempt fetch() first, fall back to `new Image()` + Performance API, adaptive payload
+- [x] T027 [US1] Create `src/plugins/jsdelivr.js` — jsDelivr CDN manufactured test: download large npm package file from `cdn.jsdelivr.net`, adaptive payload, full CORS support
+- [x] T028 [US1] Create `src/app.js` — entry point: import plugins (triggers registration), detect `?format=json`, initialize UI or JSON mode, wire up "Run Test" button → TestRunner → Analyzer → Presenter pipeline, browser API detection (FR-031)
+- [x] T029 [US1] Implement all 10 edge cases from spec: all tests fail, no Web Workers, CORS blocked, very fast connection, very slow connection, missing Performance API, localStorage full, rapid clicks, empty history, JSON mode no data
 
 **Checkpoint**: At this point, User Story 1 is fully functional — a user can run a differential speed test and see results with discrepancy analysis.
 
@@ -83,13 +83,13 @@
 
 ### Tests for User Story 2
 
-- [ ] T030 [P] [US2] Write unit tests for `src/lib/history-manager.js` in `tests/unit/history-manager.test.js` — test persist, load, eviction, serialization, empty state, localStorage unavailable fallback
+- [x] T030 [P] [US2] Write unit tests for `src/lib/history-manager.js` in `tests/unit/history-manager.test.js` — test persist, load, eviction, serialization, empty state, localStorage unavailable fallback
 
 ### Implementation for User Story 2
 
-- [ ] T031 [US2] Create `src/lib/history-manager.js` — implements `save(run)`, `loadAll() → HistoryEntry[]`, `getByRunId(id) → HistoryEntry`, `evictOldest()`, `clear()`, localStorage serialization, quota-aware eviction (FR-019), unavailable storage fallback (FR-020)
-- [ ] T032 [US2] Add history UI to `src/lib/ui-manager.js` — history list in sidebar/below results, scrollable list of entries with timestamp + summary, click handler to display past run, empty state message (FR-034: "No tests run yet")
-- [ ] T033 [US2] Integrate history persistence into test flow in `src/app.js` — call `historyManager.save()` after each test run completes, load history on app init
+- [x] T031 [US2] Create `src/lib/history-manager.js` — implements `save(run)`, `loadAll() → HistoryEntry[]`, `getByRunId(id) → HistoryEntry`, `evictOldest()`, `clear()`, localStorage serialization, quota-aware eviction (FR-019), unavailable storage fallback (FR-020)
+- [x] T032 [US2] Add history UI to `src/lib/ui-manager.js` — history list in sidebar/below results, scrollable list of entries with timestamp + summary, click handler to display past run, empty state message (FR-034: "No tests run yet")
+- [x] T033 [US2] Integrate history persistence into test flow in `src/app.js` — call `historyManager.save()` after each test run completes, load history on app init
 
 **Checkpoint**: User Stories 1 AND 2 both work — tests persist across page reloads, history is browsable.
 
@@ -103,12 +103,9 @@
 
 ### Tests for User Story 3
 
-- [ ] T034 [P] [US3] Write integration test for JSON mode in `tests/integration/json-mode.test.js` — test all states: no data, with results, with errors, empty history
-
-### Implementation for User Story 3
-
-- [ ] T035 [US3] Implement JSON output in `src/lib/results-presenter.js` — `presentJson(run)` method: serialize TestRun to JSON with schema matching spec (FR-022, FR-023, FR-024), include `results[]`, `lastTestTimestamp`, `baselineName`, `verdict`, `errors[]`
-- [ ] T036 [US3] Wire JSON mode detection in `src/app.js` — detect `?format=json` before UI init, load from localStorage, call `presenter.presentJson()`, output to `document.body` as `<pre>` or set `document.body.textContent`
+- [x] T034 [P] [US3] Write integration test for JSON mode in `tests/integration/json-mode.test.js` — test all states: no data, with results, with errors, empty history
+- [x] T035 [US3] Implement JSON output in `src/lib/results-presenter.js` — `presentJson(run)` method: serialize TestRun to JSON with schema matching spec (FR-022, FR-023, FR-024), include `results[]`, `lastTestTimestamp`, `baselineName`, `verdict`, `errors[]`
+- [x] T036 [US3] Wire JSON mode detection in `src/app.js` — detect `?format=json` before UI init, load from localStorage, call `presenter.presentJson()`, output to `document.body` as `<pre>` or set `document.body.textContent`
 
 **Checkpoint**: User Stories 1, 2, AND 3 all work. JSON mode returns valid schema-conformant JSON.
 
@@ -122,9 +119,9 @@
 
 ### Implementation for User Story 4
 
-- [ ] T037 [US4] Enhance verdict generation in `src/lib/results-analyzer.js` — implement all verdict levels: `no_throttling`, `possible_throttling`, `strong_signal`, `inconclusive`, `no_data`, with affected service names, per US4 acceptance scenarios
-- [ ] T038 [US4] Update `src/lib/results-presenter.js` — verdict display component with colored indicator (green/yellow/red/gray) AND text label (never color alone, FR-015), affected services list, explanation text
-- [ ] T039 [US4] Update `src/lib/ui-manager.js` — ARIA live region announcement for verdict: "Tests complete. Strong throttling signal for Fast.com (Netflix)."
+- [x] T037 [US4] Enhance verdict generation in `src/lib/results-analyzer.js` — implement all verdict levels: `no_throttling`, `possible_throttling`, `strong_signal`, `inconclusive`, `no_data`, with affected service names, per US4 acceptance scenarios
+- [x] T038 [US4] Update `src/lib/results-presenter.js` — verdict display component with colored indicator (green/yellow/red/gray) AND text label (never color alone, FR-015), affected services list, explanation text
+- [x] T039 [US4] Update `src/lib/ui-manager.js` — ARIA live region announcement for verdict: "Tests complete. Strong throttling signal for Fast.com (Netflix)."
 
 **Checkpoint**: All user stories complete. Application delivers full value: test, history, JSON mode, and understandable verdicts.
 
@@ -134,13 +131,13 @@
 
 **Purpose**: WCAG 2.2 AA compliance, edge case hardening, final quality passes
 
-- [ ] T040 [P] Accessibility audit pass on `index.html` and `src/lib/ui-manager.js` — verify: keyboard navigation (FR-025), visible focus indicators, ARIA live regions (FR-026), progressbar role (FR-027), proper table markup (FR-029), color contrast (FR-028)
-- [ ] T041 [P] Implement `src/styles/main.css` responsive design — mobile-friendly layout, max-width container, readable on narrow screens
-- [ ] T042 [P] Add `<noscript>` and unsupported browser messaging in `index.html` — clear message: "JavaScript is required to run speed tests" (noscript), "Your browser doesn't support the needed performance measurement features" (old browser)
-- [ ] T043 Polish error messages across all plugins — ensure all error cases map to plain-language user messages per spec edge cases
-- [ ] T044 Final integration test pass — run `tests/integration/full-flow.test.js` and `tests/integration/json-mode.test.js`, verify all acceptance criteria from spec
-- [ ] T045 Run full lint + test + coverage suite: verify ESLint zero errors/warnings, all tests pass, coverage ≥80% on lib/ and plugin-registry
-- [ ] T046 Quickstart validation — follow `quickstart.md` exactly, verify all flows work end-to-end
+- [x] T040 [P] Accessibility audit pass on `index.html` and `src/lib/ui-manager.js` — verify: keyboard navigation (FR-025), visible focus indicators, ARIA live regions (FR-026), progressbar role (FR-027), proper table markup (FR-029), color contrast (FR-028)
+- [x] T041 [P] Implement `src/styles/main.css` responsive design — mobile-friendly layout, max-width container, readable on narrow screens
+- [x] T042 [P] Add `<noscript>` and unsupported browser messaging in `index.html` — clear message: "JavaScript is required to run speed tests" (noscript), "Your browser doesn't support the needed performance measurement features" (old browser)
+- [x] T043 Polish error messages across all plugins — ensure all error cases map to plain-language user messages per spec edge cases
+- [x] T044 Final integration test pass — run `tests/integration/full-flow.test.js` and `tests/integration/json-mode.test.js`, verify all acceptance criteria from spec
+- [x] T045 Run full lint + test + coverage suite: verify ESLint zero errors/warnings, all tests pass, coverage ≥80% on lib/ and plugin-registry
+- [x] T046 Quickstart validation — follow `quickstart.md` exactly, verify all flows work end-to-end
 
 ---
 

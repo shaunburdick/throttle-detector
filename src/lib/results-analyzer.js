@@ -1,26 +1,110 @@
 /**
  * Results Analyzer — computes discrepancies and generates verdicts.
  *
- * Takes raw TestResult[] from the runner, selects a baseline, calculates
- * percentage deviations for each target, and classifies results per the
- * throttling thresholds defined in the spec.
- *
  * @module lib/results-analyzer
  */
 
-/** Percentage threshold for normal range (≤ this value) */
 const NORMAL_THRESHOLD = 15;
-
-/** Percentage threshold for strong signal (> this value) */
 const STRONG_THRESHOLD = 30;
-
-/** Margin within which speeds are considered equal */
 const EQUAL_MARGIN = 1;
 
+// === Helpers (function declarations hoist) ===
+
 /**
- * Analyzes a set of test results and returns baseline, discrepancies, and verdict.
+ * @param {import('./types.js').TestResult[]} successful
+ * @returns {import('./types.js').TestResult}
+ */
+function selectBaseline(successful) {
+    const cf = successful.find((res) => res.pluginId === 'cloudflare');
+    if (cf) {
+        return cf;
+    }
+    return successful.reduce((fast, cur) =>
+        (cur.downloadSpeedMbps || 0) > (fast.downloadSpeedMbps || 0) ? cur : fast);
+}
+
+/**
+ * @param {import('./types.js').TestResult} target
+ * @param {number} baselineSpeed
+ * @returns {import('./types.js').Discrepancy}
+ */
+function computeDiscrepancy(target, baselineSpeed) {
+    const targetSpeed = target.downloadSpeedMbps;
+    if (targetSpeed === null || baselineSpeed === 0 || targetSpeed === 0) {
+        return makeDisc(target, null, 'unknown', false, 'inconclusive');
+    }
+    const dev = ((targetSpeed - baselineSpeed) / baselineSpeed) * 100;
+    const absDev = Math.abs(dev);
+    const dir = absDev <= EQUAL_MARGIN ? 'equal' : dev < 0 ? 'slower' : 'faster';
+    const cls = absDev <= NORMAL_THRESHOLD ? 'normal'
+        : dir === 'slower' ? (absDev > STRONG_THRESHOLD ? 'strong_signal' : 'possible_throttling')
+            : 'inconclusive';
+    return makeDisc(target, Math.round(dev * 10) / 10, dir, absDev > NORMAL_THRESHOLD, cls);
+}
+
+/**
+ * @param {import('./types.js').TestResult} target
+ * @param {number|null} dev
+ * @param {string} dir
+ * @param {boolean} sig
+ * @param {string} cls
+ * @returns {import('./types.js').Discrepancy}
+ */
+function makeDisc(target, dev, dir, sig, cls) {
+    return {
+        targetName: target.targetName, pluginId: target.pluginId,
+        percentageDeviation: dev, direction: dir,
+        isSignificant: sig, classification: cls,
+    };
+}
+
+/**
+ * @param {import('./types.js').Discrepancy[]} discList
+ * @param {import('./types.js').TestResult[]} results
+ * @returns {import('./types.js').Verdict}
+ */
+function generateVerdict(discList, results) {
+    const ok = results.filter(
+        (res) => res.status === 'success' && res.downloadSpeedMbps !== null
+    );
+    if (ok.length === 0) {
+        return {
+            level: 'inconclusive',
+            message: 'Unable to determine \u2014 tests could not complete',
+            affectedServices: [], indicator: 'gray',
+        };
+    }
+    const strong = discList.filter((d) => d.classification === 'strong_signal');
+    const possible = discList.filter((d) => d.classification === 'possible_throttling');
+
+    if (strong.length > 0) {
+        return {
+            level: 'strong_signal',
+            message: `Strong throttling signal for ${strong.map((d) => d.targetName).join(', ')}`,
+            affectedServices: strong.map((d) => d.targetName),
+            indicator: 'red',
+        };
+    }
+    if (possible.length > 0) {
+        return {
+            level: 'possible_throttling',
+            message: `Possible throttling on ${possible.map((d) => d.targetName).join(', ')}`,
+            affectedServices: possible.map((d) => d.targetName),
+            indicator: 'yellow',
+        };
+    }
+    return {
+        level: 'no_throttling', message: 'No throttling detected',
+        affectedServices: [], indicator: 'green',
+    };
+}
+
+// === Main export ===
+
+/**
+ * Analyzes test results.
  *
- * @param {import('./types.js').TestResult[]} results - Raw plugin results
+ * @param {import('./types.js').TestResult[]} results
  * @returns {{
  *   baseline: import('./types.js').TestResult|null,
  *   discrepancies: import('./types.js').Discrepancy[],
@@ -29,196 +113,48 @@ const EQUAL_MARGIN = 1;
  */
 export function analyzeResults(results) {
     if (!results || results.length === 0) {
-        return {
-            baseline: null,
-            discrepancies: [],
-            verdict: {
-                level: 'no_data',
-                message: 'No tests have been run yet',
-                affectedServices: [],
-                indicator: 'gray',
-            },
-        };
+        return { baseline: null, discrepancies: [], verdict: noDataVerdict() };
     }
-
-    const successful = results.filter((r) => r.status === 'success' && r.downloadSpeedMbps !== null);
-
+    const successful = results.filter(
+        (res) => res.status === 'success' && res.downloadSpeedMbps !== null
+    );
     if (successful.length === 0) {
+        const discList = results.map((res) => makeDisc(res, null, 'unknown', false, 'inconclusive'));
         return {
-            baseline: null,
-            discrepancies: results.map((r) => ({
-                targetName: r.targetName,
-                pluginId: r.pluginId,
-                percentageDeviation: null,
-                direction: 'unknown',
-                isSignificant: false,
-                classification: 'inconclusive',
-            })),
+            baseline: null, discrepancies: discList,
             verdict: {
                 level: 'inconclusive',
                 message: 'Unable to determine \u2014 tests could not complete',
-                affectedServices: [],
-                indicator: 'gray',
+                affectedServices: [], indicator: 'gray',
             },
         };
     }
-
-    // Baseline: prefer Cloudflare, then fastest successful result
     const baseline = selectBaseline(successful);
-    const baselineSpeed = baseline.downloadSpeedMbps;
+    const bs = baseline.downloadSpeedMbps;
+    const discList = [];
 
-    // Compute discrepancies for all successful results (excluding baseline)
-    const discrepancies = [];
-    for (const result of successful) {
-        if (result.pluginId === baseline.pluginId) {
+    for (const res of successful) {
+        if (res.pluginId === baseline.pluginId) {
             continue;
         }
-
-        const discrepancy = computeDiscrepancy(result, baselineSpeed);
-        discrepancies.push(discrepancy);
+        discList.push(computeDiscrepancy(res, bs));
     }
-
-    // Add inconclusive entries for failed tests
-    for (const result of results) {
-        if (result.status !== 'success' || result.downloadSpeedMbps === null) {
-            if (result.pluginId === baseline.pluginId) {
-                continue;
-            }
-            discrepancies.push({
-                targetName: result.targetName,
-                pluginId: result.pluginId,
-                percentageDeviation: null,
-                direction: 'unknown',
-                isSignificant: false,
-                classification: 'inconclusive',
-            });
+    for (const res of results) {
+        if (res.status === 'success' && res.downloadSpeedMbps !== null) {
+            continue;
         }
-    }
-
-    const verdict = generateVerdict(discrepancies, results);
-
-    return { baseline, discrepancies, verdict };
-}
-
-/**
- * Selects the baseline from successful results.
- * Prefers 'cloudflare' plugin, then picks the fastest result.
- *
- * @param {import('./types.js').TestResult[]} successful - Successful results
- * @returns {import('./types.js').TestResult}
- */
-function selectBaseline(successful) {
-    // Prefer Cloudflare
-    const cloudflare = successful.find((r) => r.pluginId === 'cloudflare');
-    if (cloudflare) {
-        return cloudflare;
-    }
-    // Otherwise, pick the fastest
-    return successful.reduce((fastest, current) =>
-        (current.downloadSpeedMbps || 0) > (fastest.downloadSpeedMbps || 0) ? current : fastest);
-}
-
-/**
- * Computes the discrepancy between a target result and the baseline speed.
- *
- * @param {import('./types.js').TestResult} target - Target result
- * @param {number} baselineSpeed - Baseline speed in Mbps
- * @returns {import('./types.js').Discrepancy}
- */
-function computeDiscrepancy(target, baselineSpeed) {
-    const targetSpeed = target.downloadSpeedMbps;
-    if (targetSpeed === null || baselineSpeed === 0 || targetSpeed === 0) {
-        return {
-            targetName: target.targetName,
-            pluginId: target.pluginId,
-            percentageDeviation: null,
-            direction: 'unknown',
-            isSignificant: false,
-            classification: 'inconclusive',
-        };
-    }
-
-    const deviation = ((targetSpeed - baselineSpeed) / baselineSpeed) * 100;
-    const absDeviation = Math.abs(deviation);
-
-    let direction;
-    if (absDeviation <= EQUAL_MARGIN) {
-        direction = 'equal';
-    } else if (deviation < 0) {
-        direction = 'slower';
-    } else {
-        direction = 'faster';
-    }
-
-    let classification;
-    if (absDeviation <= NORMAL_THRESHOLD) {
-        classification = 'normal';
-    } else if (direction === 'slower') {
-        if (absDeviation > STRONG_THRESHOLD) {
-            classification = 'strong_signal';
-        } else {
-            classification = 'possible_throttling';
+        if (res.pluginId === baseline.pluginId) {
+            continue;
         }
-    } else {
-        classification = 'inconclusive';
+        discList.push(makeDisc(res, null, 'unknown', false, 'inconclusive'));
     }
-
-    return {
-        targetName: target.targetName,
-        pluginId: target.pluginId,
-        percentageDeviation: Math.round(deviation * 10) / 10,
-        direction,
-        isSignificant: absDeviation > NORMAL_THRESHOLD,
-        classification,
-    };
+    return { baseline, discrepancies: discList, verdict: generateVerdict(discList, results) };
 }
 
-/**
- * Generates an overall verdict from computed discrepancies.
- *
- * @param {import('./types.js').Discrepancy[]} discrepancies
- * @param {import('./types.js').TestResult[]} results - All results for context
- * @returns {import('./types.js').Verdict}
- */
-function generateVerdict(discrepancies, results) {
-    const successful = results.filter((r) => r.status === 'success' && r.downloadSpeedMbps !== null);
-
-    if (successful.length === 0) {
-        return {
-            level: 'inconclusive',
-            message: 'Unable to determine \u2014 tests could not complete',
-            affectedServices: [],
-            indicator: 'gray',
-        };
-    }
-
-    const strongSignals = discrepancies.filter((d) => d.classification === 'strong_signal');
-    const possibleThrottling = discrepancies.filter((d) => d.classification === 'possible_throttling');
-
-    if (strongSignals.length > 0) {
-        const serviceNames = strongSignals.map((d) => d.targetName).join(', ');
-        return {
-            level: 'strong_signal',
-            message: `Strong throttling signal for ${serviceNames}`,
-            affectedServices: strongSignals.map((d) => d.targetName),
-            indicator: 'red',
-        };
-    }
-
-    if (possibleThrottling.length > 0) {
-        const serviceNames = possibleThrottling.map((d) => d.targetName).join(', ');
-        return {
-            level: 'possible_throttling',
-            message: `Possible throttling on ${serviceNames}`,
-            affectedServices: possibleThrottling.map((d) => d.targetName),
-            indicator: 'yellow',
-        };
-    }
-
+/** @returns {import('./types.js').Verdict} */
+function noDataVerdict() {
     return {
-        level: 'no_throttling',
-        message: 'No throttling detected',
-        affectedServices: [],
-        indicator: 'green',
+        level: 'no_data', message: 'No tests have been run yet',
+        affectedServices: [], indicator: 'gray',
     };
 }

@@ -14,6 +14,7 @@ const DEFAULT_CONFIG = {
 const CLOUDFLARE_ID = 'cloudflare';
 const NETFLIX_ID = 'fast-com';
 const GOOGLE_ID = 'google-cdn';
+const CORS_ERROR = 'CORS blocked';
 
 describe('Full Test Flow (Integration)', () => {
     it('end-to-end: runner to analyzer to presenter (HTML)', async () => {
@@ -73,7 +74,7 @@ describe('Full Test Flow (Integration)', () => {
                 { id: CLOUDFLARE_ID, name: 'Cloudflare', speedMbps: 100 }
             ),
             createErrorPlugin(
-                { id: NETFLIX_ID, name: 'Netflix', errorMessage: 'CORS blocked' }
+                { id: NETFLIX_ID, name: 'Netflix', errorMessage: CORS_ERROR }
             ),
             createSuccessPlugin(
                 { id: GOOGLE_ID, name: 'Google', speedMbps: 90 }
@@ -160,7 +161,7 @@ describe('Full Test Flow (Integration)', () => {
                 downloadSpeedMbps: null,
                 durationMs: 100,
                 bytesTransferred: 0,
-                errorMessage: 'CORS blocked',
+                errorMessage: CORS_ERROR,
                 timestamp: new Date().toISOString(),
             }],
             baselinePluginId: null,
@@ -177,6 +178,6 @@ describe('Full Test Flow (Integration)', () => {
         const json = presentJson(run);
         const parsed = JSON.parse(json);
         expect(parsed.errors).toHaveLength(1);
-        expect(parsed.errors[0].errorMessage).toBe('CORS blocked');
+        expect(parsed.errors[0].errorMessage).toBe(CORS_ERROR);
     });
 });

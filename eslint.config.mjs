@@ -39,7 +39,7 @@ export default [
         },
     },
     {
-        files: ['tests/**/*.test.js'],
+        files: ['tests/**/*.test.js', 'tests/**/mock-*.js', 'tests/helpers/**/*.js'],
         languageOptions: {
             globals: {
                 describe: 'readonly',

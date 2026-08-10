@@ -1,192 +1,133 @@
 /**
- * History Manager — persists test runs to localStorage and manages eviction.
- *
- * Handles save, load, lookup, and quota-aware eviction of test history.
- * Falls back to in-memory-only mode when localStorage is unavailable.
+ * History Manager — persists test runs to localStorage.
  *
  * @module lib/history-manager
  */
 
 const STORAGE_KEY = 'throttle-detector-history';
 const MAX_ENTRIES = 50;
-const MAX_STORAGE_BYTES = 4 * 1024 * 1024; // 4MB soft cap
+const MAX_STORAGE_BYTES = 4 * 1024 * 1024;
 
-/** @type {boolean} Whether localStorage is available */
-let storageAvailable = true;
+let storageOk = true;
 
-/**
- * Checks if localStorage is writable.
- *
- * @returns {boolean}
- */
-function isStorageWritable() {
+// === Helpers (function declarations hoist) ===
+
+/** @returns {boolean} */
+function checkStorage() {
     try {
-        const testKey = '__td_test__';
-        localStorage.setItem(testKey, testKey);
-        localStorage.removeItem(testKey);
+        const k = '__td_test__';
+        localStorage.setItem(k, k);
+        localStorage.removeItem(k);
         return true;
     } catch {
         return false;
     }
 }
 
-// Check at module load
-storageAvailable = isStorageWritable();
-
-/**
- * Saves a test run to localStorage.
- *
- * @param {import('./types.js').TestRun} run - The completed test run
- * @returns {boolean} Whether the save succeeded
- */
-export function save(run) {
-    if (!storageAvailable) {
-        return false;
-    }
-
-    const entry = {
-        runId: run.runId,
-        timestamp: run.timestamp,
-        pluginCount: run.results.length,
-        successCount: run.results.filter((r) => r.status === 'success').length,
-        errorCount: run.results.filter((r) => r.status !== 'success').length,
-        summary: buildSummary(run),
-        verdict: run.verdict,
-        results: run.results,
-    };
-
-    try {
-        const history = loadFromStorage();
-        // Newest first
-        history.unshift(entry);
-
-        // Enforce max entries limit
-        while (history.length > MAX_ENTRIES) {
-            history.pop();
-        }
-
-        // Enforce storage size limit
-        const serialized = JSON.stringify(history);
-        if (serialized.length > MAX_STORAGE_BYTES) {
-            // Evict oldest until under limit
-            while (history.length > 1) {
-                history.pop();
-                const reduced = JSON.stringify(history);
-                if (reduced.length <= MAX_STORAGE_BYTES) {
-                    break;
-                }
-            }
-        }
-
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-        return true;
-    } catch {
-        storageAvailable = false;
-        return false;
-    }
-}
-
-/**
- * Loads all history entries from localStorage.
- *
- * @returns {import('./types.js').HistoryEntry[]} Newest first
- */
-export function loadAll() {
-    if (!storageAvailable) {
-        return [];
-    }
-
-    try {
-        return loadFromStorage();
-    } catch {
-        storageAvailable = false;
-        return [];
-    }
-}
-
-/**
- * Gets a specific history entry by run ID.
- *
- * @param {string} runId
- * @returns {import('./types.js').HistoryEntry|undefined}
- */
-export function getByRunId(runId) {
-    const entries = loadAll();
-    return entries.find((e) => e.runId === runId);
-}
-
-/**
- * Clears all history from localStorage.
- */
-export function clear() {
-    if (!storageAvailable) {
-        return;
-    }
-    try {
-        localStorage.removeItem(STORAGE_KEY);
-    } catch {
-        storageAvailable = false;
-    }
-}
-
-/**
- * Checks if localStorage is available for persistence.
- *
- * @returns {boolean}
- */
-export function isAvailable() {
-    return storageAvailable;
-}
-
-/**
- * Loads and parses history from localStorage.
- *
- * @returns {import('./types.js').HistoryEntry[]}
- */
+/** @returns {import('./types.js').HistoryEntry[]} */
 function loadFromStorage() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
         return [];
     }
-
     try {
         const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) {
-            return [];
-        }
-        return parsed;
+        return Array.isArray(parsed) ? parsed : [];
     } catch {
         return [];
     }
 }
 
-/**
- * Builds a one-line summary for the history list.
- *
- * @param {import('./types.js').TestRun} run
- * @returns {string}
- */
+/** @param {import('./types.js').TestRun} run @returns {string} */
 function buildSummary(run) {
     if (!run.verdict) {
         return `${run.results.length} tests completed`;
     }
-
-    switch (run.verdict.level) {
-        case 'no_throttling':
-            return 'No throttling detected';
-        case 'possible_throttling':
-        case 'strong_signal': {
-            const count = run.verdict.affectedServices.length;
-            const services = run.verdict.affectedServices.join(', ');
-            if (count === 0) {
-                return run.verdict.message;
-            }
-            return `${count} service${count !== 1 ? 's' : ''} flagged: ${services}`;
-        }
-        case 'inconclusive':
-            return 'Results inconclusive';
-        case 'no_data':
-        default:
-            return 'No data';
+    const v = run.verdict;
+    if (v.level === 'no_throttling') {
+        return 'No throttling detected';
     }
+    if (v.level === 'possible_throttling' || v.level === 'strong_signal') {
+        const count = v.affectedServices.length;
+        if (count === 0) {
+            return v.message;
+        }
+        const svc = v.affectedServices.join(', ');
+        return `${count} service${count !== 1 ? 's' : ''} flagged: ${svc}`;
+    }
+    if (v.level === 'inconclusive') {
+        return 'Results inconclusive';
+    }
+    return 'No data';
+}
+
+storageOk = checkStorage();
+
+// === Exports ===
+
+/** @param {import('./types.js').TestRun} run @returns {boolean} */
+export function save(run) {
+    if (!storageOk) {
+        return false;
+    }
+    const entry = {
+        runId: run.runId, timestamp: run.timestamp,
+        pluginCount: run.results.length,
+        successCount: run.results.filter((res) => res.status === 'success').length,
+        errorCount: run.results.filter((res) => res.status !== 'success').length,
+        summary: buildSummary(run), verdict: run.verdict, results: run.results,
+    };
+    try {
+        const history = loadFromStorage();
+        history.unshift(entry);
+        while (history.length > MAX_ENTRIES) {
+            history.pop();
+        }
+        const ser = JSON.stringify(history);
+        if (ser.length > MAX_STORAGE_BYTES) {
+            while (history.length > 1) {
+                history.pop();
+                if (JSON.stringify(history).length <= MAX_STORAGE_BYTES) {
+                    break;
+                }
+            }
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+        return true;
+    } catch {
+        storageOk = false; return false;
+    }
+}
+
+/** @returns {import('./types.js').HistoryEntry[]} */
+export function loadAll() {
+    if (!storageOk) {
+        return [];
+    }
+    try {
+        return loadFromStorage();
+    } catch {
+        storageOk = false; return [];
+    }
+}
+
+/** @param {string} runId @returns {import('./types.js').HistoryEntry|undefined} */
+export function getByRunId(runId) {
+    return loadAll().find((entry) => entry.runId === runId);
+}
+
+export function clear() {
+    if (!storageOk) {
+        return;
+    }
+    try {
+        localStorage.removeItem(STORAGE_KEY);
+    } catch {
+        storageOk = false;
+    }
+}
+
+/** @returns {boolean} */
+export function isAvailable() {
+    return storageOk;
 }

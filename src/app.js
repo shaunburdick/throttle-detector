@@ -91,7 +91,10 @@ async function persistAndRefreshHistory(testRun) {
         const hm = await ensureHistoryManager();
         hm.save(testRun);
         renderHistory(hm.loadAll());
-    } catch { /* history persistence failed — non-critical */ }
+    } catch {
+        // History persistence failed — non-critical; continue without saving
+        void 0;
+    }
 }
 
 /**
@@ -118,7 +121,10 @@ async function loadHistoryEntry(runId) {
             discrepancies, verdict, warnings: [],
         };
         setResults(testRun);
-    } catch { /* history load failed — non-critical */ }
+    } catch {
+        // History load failed — non-critical; showing current state only
+        void 0;
+    }
 }
 
 // ===== Core Logic =====

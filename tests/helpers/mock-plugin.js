@@ -37,7 +37,9 @@ export function createSuccessPlugin({
         description: `Mock plugin returning ${speedMbps} Mbps`,
         category: 'cdn',
         async run() {
-            await new Promise((res) => { setTimeout(res, delayMs); });
+            await new Promise((resolve) => {
+                setTimeout(resolve, delayMs);
+            });
             return {
                 targetName: name,
                 pluginId: id,
@@ -70,7 +72,9 @@ export function createErrorPlugin({
         description: 'Mock plugin that always fails',
         category: 'cdn',
         async run() {
-            await new Promise((res) => { setTimeout(res, delayMs); });
+            await new Promise((resolve) => {
+                setTimeout(resolve, delayMs);
+            });
             return {
                 targetName: name,
                 pluginId: id,
@@ -102,7 +106,9 @@ export function createTimeoutPlugin({
         description: 'Mock plugin that always times out',
         category: 'cdn',
         async run() {
-            await new Promise((res) => { setTimeout(res, delayMs); });
+            await new Promise((resolve) => {
+                setTimeout(resolve, delayMs);
+            });
             return {
                 targetName: name,
                 pluginId: id,

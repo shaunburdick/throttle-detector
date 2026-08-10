@@ -8,7 +8,6 @@ import { formatMbps, formatDuration } from './utils.js';
 
 const KIB = 1024;
 const MIB = 1024 * 1024;
-const PERCENT = 100;
 
 // === HTML helpers (function declarations hoist) ===
 
