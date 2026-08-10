@@ -5,9 +5,11 @@
  */
 
 import './plugins/cloudflare.js';
-import './plugins/fast-com.js';
-import './plugins/google-cdn.js';
+import './plugins/cloudfront.js';
+import './plugins/youtube.js';
 import './plugins/jsdelivr.js';
+import './plugins/github.js';
+import './plugins/bunny-cdn.js';
 
 import { getPlugins } from './lib/plugin-registry.js';
 import { runAll } from './lib/test-runner.js';

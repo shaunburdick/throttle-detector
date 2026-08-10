@@ -190,7 +190,7 @@ describe('Results Analyzer', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', speedMbps: 200 }),
                 successResult({ pluginId: 'fast-com', name: 'Netflix', speedMbps: 160 }),
-                successResult({ pluginId: 'google-cdn', name: 'Google', speedMbps: 80 }),
+                successResult({ pluginId: 'cloudfront', name: 'CloudFront', speedMbps: 80 }),
             ];
             const analysis = analyzeResults(results);
             expect(analysis.verdict.level).toBe('strong_signal');
