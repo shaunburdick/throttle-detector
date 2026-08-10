@@ -241,14 +241,63 @@ function renderEmptyHistory(area) {
 }
 
 /**
- * Shows a confirmation dialog using the native browser confirm() for simplicity
- * and screen-reader accessibility.
+ * Replaces the trigger element with an inline confirmation UI.
+ * Calls onConfirm when "Yes" is clicked; restores the original element
+ * when "Cancel" is clicked or Escape is pressed.
  *
- * @param {string} message
- * @returns {boolean}
+ * @param {HTMLElement} triggerEl - Element to replace with confirmation
+ * @param {string} message - Confirmation message text
+ * @param {() => void} onConfirm - Called when user confirms deletion
  */
-function confirmDeletion(message) {
-    return window.confirm(message);
+function showInlineConfirm(triggerEl, message, onConfirm) {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'inline-confirm';
+    wrapper.setAttribute('role', 'status');
+
+    const msgEl = document.createElement('span');
+    msgEl.className = 'inline-confirm-message';
+    msgEl.textContent = message;
+
+    const yesBtn = document.createElement('button');
+    yesBtn.className = 'btn-confirm-yes';
+    yesBtn.textContent = 'Yes';
+    yesBtn.setAttribute('aria-label', 'Confirm deletion');
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn-confirm-cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.setAttribute('aria-label', 'Cancel deletion');
+
+    wrapper.appendChild(msgEl);
+    wrapper.appendChild(yesBtn);
+    wrapper.appendChild(cancelBtn);
+
+    function restore() {
+        if (!triggerEl.parentNode) {
+            wrapper.replaceWith(triggerEl);
+        }
+        triggerEl.focus();
+        announce('Deletion cancelled.');
+    }
+
+    function onKeydown(event) {
+        if (event.key !== 'Escape') {
+            return;
+        }
+        event.stopPropagation();
+        restore();
+    }
+
+    yesBtn.addEventListener('click', () => {
+        onConfirm();
+    });
+
+    cancelBtn.addEventListener('click', restore);
+    wrapper.addEventListener('keydown', onKeydown);
+
+    triggerEl.replaceWith(wrapper);
+    cancelBtn.focus();
+    announce('Confirm deletion requested.');
 }
 
 /**
@@ -312,9 +361,9 @@ function wireDeleteButtons(area) {
             if (!runId || !onHistoryDeleteCb) {
                 return;
             }
-            if (confirmDeletion('Delete this test run?')) {
+            showInlineConfirm(el, 'Delete this run?', () => {
                 onHistoryDeleteCb(runId);
-            }
+            });
         });
     }
 }
@@ -341,9 +390,9 @@ export function renderHistory(entries) {
     const deleteAllBtn = area.querySelector('.btn-delete-all');
     if (deleteAllBtn && onHistoryDeleteAllCb) {
         deleteAllBtn.addEventListener('click', () => {
-            if (confirmDeletion(`Delete all ${count} test runs?`)) {
+            showInlineConfirm(deleteAllBtn, `Delete all ${count} runs?`, () => {
                 onHistoryDeleteAllCb();
-            }
+            });
         });
     }
 }
