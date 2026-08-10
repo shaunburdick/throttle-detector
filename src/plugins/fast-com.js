@@ -5,19 +5,15 @@
  */
 
 import { registerPlugin } from '../lib/plugin-registry.js';
+import { bytesToMbps, trimmedMean } from '../lib/utils.js';
 
 const FAST_COM_URL = 'https://fast.com/';
 const API_BASE = 'https://api.fast.com/netflix/speedtest/v2';
 const SAMPLE_DURATION_MS = 10000;
 const WARMUP_DURATION_MS = 1000;
-const BYTES_PER_SECOND = 1000;
-const BITS_PER_BYTE = 8;
-const BYTES_PER_MILLION = 1_000_000;
 const DEFAULT_TIMEOUT_MS = 30000;
 const KIB = 1024;
 const MIB = 1024 * 1024;
-const OUTLIER_TRIM_RATIO = 0.1;
-const MIN_SAMPLES = 3;
 const SLOW_SPEED = 5;
 const MEDIUM_SPEED = 50;
 const FAST_SPEED = 200;
@@ -109,8 +105,8 @@ async function downloadFromOca({ url, expectedBytes, timeoutMs }) {
         await resp.blob();
         const dur = performance.now() - t0;
         const bytes = getActualBytes(url, expectedBytes);
-        const bps = bytes / (dur / BYTES_PER_SECOND);
-        return { bytes, speedMbps: (bps * BITS_PER_BYTE) / BYTES_PER_MILLION, durationMs: dur };
+        const speedMbps = bytesToMbps(bytes, dur);
+        return { bytes, speedMbps, durationMs: dur };
     } catch {
         return { bytes: 0, speedMbps: 0, durationMs: 0 };
     } finally {
@@ -135,26 +131,6 @@ function pickChunkSize(samples) {
         return 5 * MIB;
     }
     return 15 * MIB;
-}
-
-/** @param {number[]} samples @returns {number|null} */
-function computeFinalSpeed(samples) {
-    if (samples.length === 0) {
-        return null;
-    }
-    if (samples.length < MIN_SAMPLES) {
-        return samples.reduce((total, value) => total + value, 0)
-            / samples.length;
-    }
-    const sorted = [...samples].sort((first, second) => first - second);
-    const tc = Math.max(1, Math.floor(samples.length * OUTLIER_TRIM_RATIO));
-    const trimmed = sorted.slice(tc, sorted.length - tc);
-    if (trimmed.length === 0) {
-        return sorted.reduce((total, value) => total + value, 0)
-            / sorted.length;
-    }
-    return trimmed.reduce((total, value) => total + value, 0)
-        / trimmed.length;
 }
 
 /**
@@ -256,11 +232,13 @@ const fastComPlugin = {
                 urls, startTime, sampleDuration, timeoutMs,
             });
 
+            const speed = trimmedMean(samples);
             return buildResult({
-                status: 'success', speedMbps: computeFinalSpeed(samples),
+                status: speed !== null ? 'success' : 'error',
+                speedMbps: speed,
                 durationMs: Math.round(performance.now() - startTime),
                 bytesTransferred: totalBytes,
-                errorMessage: computeFinalSpeed(samples) === null
+                errorMessage: speed === null
                     ? 'Not enough valid samples collected' : null,
             });
         } catch (error) {

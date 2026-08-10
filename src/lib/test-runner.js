@@ -151,10 +151,9 @@ function setupWorker(plugin, config, resolve) {
     };
 
     worker.postMessage({
-        type: 'run', pluginId: plugin.id,
+        type: 'run',
+        pluginId: plugin.id,
         pluginName: plugin.name,
-        pluginCategory: plugin.category,
-        pluginRunCode: plugin.run.toString(),
         config: {
             timeoutMs: config.timeoutMs,
             sampleDurationMs: config.sampleDurationMs,

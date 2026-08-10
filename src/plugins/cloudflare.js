@@ -5,17 +5,13 @@
  */
 
 import { registerPlugin } from '../lib/plugin-registry.js';
+import { bytesToMbps, trimmedMean } from '../lib/utils.js';
 
 const CLOUDFLARE_URL = 'https://speed.cloudflare.com/__down';
 const SAMPLE_DURATION_MS = 10000;
 const WARMUP_DURATION_MS = 1000;
-const BYTES_PER_SECOND = 1000;
-const BITS_PER_BYTE = 8;
-const BYTES_PER_MILLION = 1_000_000;
 const MIN_SAMPLE_DURATION_MS = 200;
 const SLOW_SAMPLE_THRESHOLD_MS = 1000;
-const OUTLIER_TRIM_RATIO = 0.1;
-const MIN_SAMPLES = 3;
 const DEFAULT_TIMEOUT_MS = 30000;
 const KIB = 1024;
 const MIB = 1024 * 1024;
@@ -58,31 +54,11 @@ async function downloadAndMeasure({ url, expectedBytes, timeoutMs }) {
                 bytes = entry.encodedBodySize;
             }
         }
-        const bps = bytes / (durationMs / BYTES_PER_SECOND);
-        return { bytes, speedMbps: (bps * BITS_PER_BYTE) / BYTES_PER_MILLION, durationMs };
+        const speedMbps = bytesToMbps(bytes, durationMs);
+        return { bytes, speedMbps, durationMs };
     } finally {
         clearTimeout(timeoutId);
     }
-}
-
-/** @param {number[]} samples @returns {number|null} */
-function finalSpeed(samples) {
-    if (samples.length === 0) {
-        return null;
-    }
-    if (samples.length < MIN_SAMPLES) {
-        return samples.reduce((total, value) => total + value, 0)
-            / samples.length;
-    }
-    const sorted = [...samples].sort((first, second) => first - second);
-    const tc = Math.max(1, Math.floor(samples.length * OUTLIER_TRIM_RATIO));
-    const trimmed = sorted.slice(tc, sorted.length - tc);
-    if (trimmed.length === 0) {
-        return sorted.reduce((total, value) => total + value, 0)
-            / sorted.length;
-    }
-    return trimmed.reduce((total, value) => total + value, 0)
-        / trimmed.length;
 }
 
 const TARGET_NAME = 'Cloudflare (Baseline)';
@@ -157,7 +133,7 @@ const cloudflarePlugin = {
                 );
             }
 
-            const speed = finalSpeed(samples);
+            const speed = trimmedMean(samples);
             const errorMessage = speed === null
                 ? 'Not enough valid samples collected' : null;
             return buildResult({

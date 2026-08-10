@@ -139,6 +139,15 @@ export function setRunning(plugins) {
 
 const PERCENTAGE_MULTIPLIER = 100;
 
+/** @type {number} Tracks last announced completion count for debouncing */
+let lastAnnouncedDone = 0;
+
+/** @type {number} Tracks last announcement timestamp for rate limiting */
+let lastProgressAnnounce = 0;
+
+/** Minimum interval between progress announcements (ms) */
+const PROGRESS_ANNOUNCE_THROTTLE_MS = 1000;
+
 /** @param {number} done @param {number} total */
 export function updateProgress(done, total) {
     const pct = total > 0
@@ -154,6 +163,14 @@ export function updateProgress(done, total) {
     }
     if (txt) {
         txt.textContent = `${done} of ${total} tests complete`;
+    }
+
+    // Debounced screen reader announcement: once per 2 completions or once per second
+    const now = Date.now();
+    if (done - lastAnnouncedDone >= 2 || now - lastProgressAnnounce >= PROGRESS_ANNOUNCE_THROTTLE_MS) {
+        announce(`${done} of ${total} tests complete`);
+        lastAnnouncedDone = done;
+        lastProgressAnnounce = now;
     }
 }
 
@@ -192,6 +209,13 @@ export async function setResults(run) {
         return;
     }
 
+    // Move focus to results heading after content replacement
+    const heading = area.querySelector('#results-heading');
+    if (heading) {
+        heading.setAttribute('tabindex', '-1');
+        heading.focus();
+    }
+
     const msg = run.verdict ? run.verdict.message : 'Tests complete';
     announce(`Tests complete. ${msg}`);
 }
@@ -215,13 +239,14 @@ export function renderHistory(entries) {
 
     let items = '';
     for (const entry of entries) {
-        items += '<li class="history-entry" tabindex="0" role="button"'
+        items += '<li class="history-list-item">'
+            + '<button class="history-entry"'
             + ` aria-label="Test run from ${formatTimestamp(entry.timestamp)}"`
             + ` data-run-id="${escAttr(entry.runId)}">`
             + '<span class="history-entry-summary">'
             + `${esc(entry.summary)}</span>`
             + '<span class="history-entry-timestamp">'
-            + `${formatTimestamp(entry.timestamp)}</span></li>`;
+            + `${formatTimestamp(entry.timestamp)}</span></button></li>`;
     }
 
     area.innerHTML = '<section class="history-section"'
@@ -234,13 +259,6 @@ export function renderHistory(entries) {
             if (onHistoryClickCb) {
                 onHistoryClickCb(el.getAttribute('data-run-id'));
             }
-        });
-        el.addEventListener('keydown', (event) => {
-            if (event.key !== 'Enter' && event.key !== ' ') {
-                return;
-            }
-            event.preventDefault();
-            el.click();
         });
     }
 }
