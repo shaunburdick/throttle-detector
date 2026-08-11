@@ -5,7 +5,7 @@
  */
 
 import { formatTimestamp } from './utils.js';
-import { presentHtml } from './results-presenter.js';
+import { presentHtml, presentJson, presentPluginChecklist } from './results-presenter.js';
 import { escapeHtml } from './dom-utils.js';
 import { getPlugins } from './plugin-registry.js';
 
@@ -76,37 +76,6 @@ export function buildErrorHtml({ icon, title, message, items }) {
 
 // ===== Render =====
 
-/**
- * Renders HTML for the plugin selection checklist.
- *
- * Each plugin gets a checkbox (native input) wrapped in a label.
- * When `disabled` is true, checkboxes are disabled (during test runs).
- * When `disabled` is false, checkboxes default to checked.
- *
- * @param {import('./types.js').TestPlugin[]} plugins
- * @param {boolean} disabled
- * @returns {string}
- */
-function renderPluginChecklist(plugins, disabled) {
-    let items = '';
-    const checkedAttr = disabled ? '' : ' checked';
-    const disabledAttr = disabled ? ' disabled' : '';
-    for (const plugin of plugins) {
-        items += '<li class="plugin-check-item">'
-            + '<label class="plugin-check-label">'
-            + '<input type="checkbox" class="plugin-select-checkbox"'
-            + `${disabledAttr}${checkedAttr}`
-            + ` data-plugin-id="${escAttr(plugin.id)}">`
-            + `${escapeHtml(plugin.name)}</label>`
-            + `<span class="badge badge-neutral" style="font-size:0.75rem">${escapeHtml(plugin.category)}</span></li>`;
-    }
-    const count = plugins.length;
-    return '<section class="plugin-checklist" aria-label="Test target selection">'
-        + `<p class="plugin-checklist-count">${count} test target${count !== 1 ? 's' : ''} available</p>`
-        + `<ul class="plugin-check-list" role="group" aria-label="Select test targets">${items}</ul>`
-        + '</section>';
-}
-
 /** @param {string[]} warnings */
 function render(warnings) {
     const main = document.getElementById('main-content');
@@ -132,7 +101,7 @@ function render(warnings) {
     // Show plugin checklist in the pre-run state
     const plugins = getPlugins();
     lastPlugins = plugins;
-    const checklistHtml = renderPluginChecklist(plugins, false);
+    const checklistHtml = presentPluginChecklist(plugins, false);
 
     html += `<div id="${RESULTS_AREA_ID}">${checklistHtml}</div>`
         + `<div id="${HISTORY_AREA_ID}"></div>`;
@@ -182,7 +151,7 @@ export function setRunning(plugins) {
         return;
     }
 
-    const checklistHtml = renderPluginChecklist(plugins, true);
+    const checklistHtml = presentPluginChecklist(plugins, true);
 
     let items = '';
     for (const plugin of plugins) {
@@ -308,8 +277,39 @@ export function setResults(run) {
         return;
     }
 
-    const checklistHtml = renderPluginChecklist(lastPlugins.length > 0 ? lastPlugins : getPlugins(), false);
-    area.innerHTML = checklistHtml + presentHtml(run);
+    const checklistHtml = presentPluginChecklist(lastPlugins.length > 0 ? lastPlugins : getPlugins(), false);
+
+    // Generate export filename timestamp: YYYYMMDD-HHmmss
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hour = String(now.getHours()).padStart(2, '0');
+    const minute = String(now.getMinutes()).padStart(2, '0');
+    const second = String(now.getSeconds()).padStart(2, '0');
+    const exportFilename = `throttle-test-${year}${month}${day}-${hour}${minute}${second}.json`;
+
+    const exportHtml = '<div class="export-section">'
+        + '<button class="btn btn-primary export-json-btn"'
+        + ' aria-label="Download test results as JSON file">'
+        + 'Export JSON</button></div>';
+
+    area.innerHTML = checklistHtml + presentHtml(run) + exportHtml;
+
+    // Wire export button click handler
+    const exportBtn = area.querySelector('.export-json-btn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+            const json = presentJson(run);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = exportFilename;
+            anchor.click();
+            URL.revokeObjectURL(url);
+        });
+    }
 
     // Move focus to results heading after content replacement
     const heading = area.querySelector('#results-heading');
@@ -556,7 +556,7 @@ export function showErrorState(reasons) {
     }
 
     const plugins = lastPlugins.length > 0 ? lastPlugins : getPlugins();
-    const checklistHtml = renderPluginChecklist(plugins, false);
+    const checklistHtml = presentPluginChecklist(plugins, false);
 
     area.innerHTML = checklistHtml + buildErrorHtml({
         icon: '\u274C',

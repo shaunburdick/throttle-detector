@@ -202,6 +202,11 @@ function buildDetails(run) {
 
 // === Exports ===
 
+/** @param {string} str @returns {string} */
+function escAttr(str) {
+    return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 /** @param {import('./types.js').TestRun} run @returns {string} */
 export function presentHtml(run) {
     if (!run || run.results.length === 0) {
@@ -237,4 +242,35 @@ export function presentJson(run) {
         },
         discrepancies: run.discrepancies, errors,
     }, null, 2);
+}
+
+/**
+ * Renders HTML for the plugin selection checklist.
+ *
+ * Each plugin gets a checkbox (native input) wrapped in a label.
+ * When `disabled` is true, checkboxes are disabled (during test runs).
+ * When `disabled` is false, checkboxes default to checked.
+ *
+ * @param {import('./types.js').TestPlugin[]} plugins
+ * @param {boolean} disabled
+ * @returns {string}
+ */
+export function presentPluginChecklist(plugins, disabled) {
+    let items = '';
+    const checkedAttr = disabled ? '' : ' checked';
+    const disabledAttr = disabled ? ' disabled' : '';
+    for (const plugin of plugins) {
+        items += '<li class="plugin-check-item">'
+            + '<label class="plugin-check-label">'
+            + '<input type="checkbox" class="plugin-select-checkbox"'
+            + `${disabledAttr}${checkedAttr}`
+            + ` data-plugin-id="${escAttr(plugin.id)}">`
+            + `${escapeHtml(plugin.name)}</label>`
+            + `<span class="badge badge-neutral" style="font-size:0.75rem">${escapeHtml(plugin.category)}</span></li>`;
+    }
+    const count = plugins.length;
+    return '<section class="plugin-checklist" aria-label="Test target selection">'
+        + `<p class="plugin-checklist-count">${count} test target${count !== 1 ? 's' : ''} available</p>`
+        + `<ul class="plugin-check-list" role="group" aria-label="Select test targets">${items}</ul>`
+        + '</section>';
 }

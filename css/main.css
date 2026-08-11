@@ -856,6 +856,12 @@ button.history-entry:focus-visible {
     line-height: 1;
 }
 
+/* ===== Export Section ===== */
+.export-section {
+    margin-top: var(--spacing-lg);
+    text-align: center;
+}
+
 /* ===== Responsive Design ===== */
 @media (max-width: 640px) {
     header h1 {

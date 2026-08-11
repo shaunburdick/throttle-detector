@@ -17,6 +17,7 @@ import { analyzeResults } from './lib/results-analyzer.js';
 import { presentJson } from './lib/results-presenter.js';
 import { generateRunId } from './lib/utils.js';
 import { save, loadAll, deleteRun, deleteAll } from './lib/history-manager.js';
+import { escapeHtml } from './lib/dom-utils.js';
 import {
     init, setRunning, updateProgress, updatePluginStatus,
     setResults, renderHistory, showErrorState, markPluginRunning,
@@ -368,13 +369,76 @@ function initTheme() {
 
 // ---- Bootstrap continuation ---
 
+/**
+ * Generates a timestamp string for export filenames (YYYYMMDD-HHmmss).
+ *
+ * @returns {string}
+ */
+function exportTimestamp() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hour = String(now.getHours()).padStart(2, '0');
+    const minute = String(now.getMinutes()).padStart(2, '0');
+    const second = String(now.getSeconds()).padStart(2, '0');
+    return `${year}${month}${day}-${hour}${minute}${second}`;
+}
+
+/**
+ * Triggers a JSON file download in the browser.
+ *
+ * @param {string} json - The JSON string to download
+ * @param {string} filename - The desired filename
+ */
+function triggerDownload(json, filename) {
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Renders JSON output with a download button for JSON mode (?format=json).
+ *
+ * @param {string} json - The presentJson() output string
+ */
+function renderJsonModePage(json) {
+    const filename = `throttle-test-${exportTimestamp()}.json`;
+    document.body.innerHTML = '<style>'
+        + 'body{font-family:monospace;background:#1a1a2e;color:#e0e0e0;'
+        + 'margin:0;padding:1.5rem}'
+        + 'pre{white-space:pre-wrap;word-break:break-all;'
+        + 'max-height:70vh;overflow:auto;background:#242442;'
+        + 'padding:1rem;border-radius:0.5rem;margin:1rem 0}'
+        + '.json-download-btn{display:inline-flex;align-items:center;'
+        + 'gap:0.5rem;padding:0.75rem 1.5rem;font-size:1rem;'
+        + 'font-weight:600;border:none;border-radius:0.5rem;'
+        + 'background:#4da6ff;color:#1a1a2e;cursor:pointer;'
+        + 'min-height:44px;font-family:inherit}'
+        + '.json-download-btn:hover{background:#66b3ff}'
+        + '.json-download-btn:focus-visible{outline:3px solid #4da6ff;outline-offset:2px}'
+        + '</style>'
+        + '<button class="json-download-btn" aria-label="Download test results as JSON file">'
+        + 'Export JSON</button>'
+        + `<pre>${escapeHtml(json)}</pre>`;
+
+    const btn = document.querySelector('.json-download-btn');
+    if (btn) {
+        btn.addEventListener('click', () => triggerDownload(json, filename));
+    }
+}
+
 async function bootstrapJsonMode() {
     try {
         const history = loadAll();
         if (history.length > 0) {
             const latest = history[0];
             if (latest.stripped) {
-                document.body.textContent = JSON.stringify({
+                const strippedJson = JSON.stringify({
                     results: [],
                     lastTestTimestamp: latest.timestamp,
                     baselineName: null,
@@ -384,6 +448,7 @@ async function bootstrapJsonMode() {
                     },
                     errors: [],
                 }, null, 2);
+                renderJsonModePage(strippedJson);
                 return;
             }
             const { baseline, discrepancies, verdict } = analyzeResults(
@@ -395,12 +460,12 @@ async function bootstrapJsonMode() {
                 baselinePluginId: baseline ? baseline.pluginId : null,
                 discrepancies, verdict, warnings: [],
             };
-            document.body.textContent = presentJson(run);
+            renderJsonModePage(presentJson(run));
         } else {
-            document.body.textContent = presentJson(null);
+            renderJsonModePage(presentJson(null));
         }
     } catch {
-        document.body.textContent = presentJson(null);
+        renderJsonModePage(presentJson(null));
     }
 }
 

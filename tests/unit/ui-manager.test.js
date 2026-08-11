@@ -20,6 +20,8 @@ vi.mock('../../src/lib/results-presenter.js', () => ({
             + `<div class="verdict-card">Verdict: ${run.verdict?.message || ''}</div>`
             + '</div>';
     }),
+    presentJson: vi.fn(() => '{"mock":"json"}'),
+    presentPluginChecklist: vi.fn(() => '<section class="plugin-checklist"></section>'),
 }));
 
 import {
