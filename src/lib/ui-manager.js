@@ -127,12 +127,12 @@ export function setRunning(plugins) {
 
     let items = '';
     for (const plugin of plugins) {
-        items += '<li class="test-status-item"'
+        items += '<li class="test-status-item test-status-item--queued"'
             + ` data-plugin-id="${escAttr(plugin.id)}">`
-            + '<span class="test-status-icon test-status-icon--running"'
+            + '<span class="test-status-icon test-status-icon--queued"'
             + ' aria-hidden="true">\u23F3</span>'
             + `<span>${esc(plugin.name)}</span>`
-            + '<span class="test-status-label">Running...</span></li>';
+            + '<span class="test-status-label">Queued</span></li>';
     }
 
     area.innerHTML = '<div class="progress-container">'
@@ -143,6 +143,39 @@ export function setRunning(plugins) {
         + `<p class="progress-text">0 of ${plugins.length} tests complete</p>`
         + '</div><ul class="test-status-list" aria-label="Test progress">'
         + `${items}</ul>`;
+}
+
+/**
+ * Transitions a plugin row from queued to running state.
+ *
+ * Replaces the clock icon with a spinning indicator and updates styling
+ * so the user can see which plugin is currently active.
+ *
+ * @param {string} pluginId - The id of the plugin to mark as running
+ */
+export function markPluginRunning(pluginId) {
+    const item = document.querySelector(`[data-plugin-id="${escAttr(pluginId)}"]`);
+    if (!item) {
+        return;
+    }
+
+    // Swap the item class
+    item.classList.remove('test-status-item--queued');
+    item.classList.add('test-status-item--running');
+
+    // Swap the icon
+    const icon = item.querySelector('.test-status-icon');
+    if (icon) {
+        icon.classList.remove('test-status-icon--queued');
+        icon.classList.add('test-status-icon--running');
+        icon.textContent = '\u27F3'; // ⟳ spinner character
+    }
+
+    // Update the label
+    const label = item.querySelector('.test-status-label');
+    if (label) {
+        label.textContent = 'Running...';
+    }
 }
 
 const PERCENTAGE_MULTIPLIER = 100;
@@ -188,6 +221,10 @@ export function updatePluginStatus(pluginId, ok) {
     if (!item) {
         return;
     }
+
+    // Clear transitional states
+    item.classList.remove('test-status-item--queued', 'test-status-item--running');
+
     const icon = item.querySelector('.test-status-icon');
     const label = item.querySelector('.test-status-label');
     if (icon) {

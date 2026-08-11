@@ -68,25 +68,31 @@ async function runPluginWithTimeout(plugin, config) {
 }
 
 /**
+ * Options for the runAll orchestrator.
+ *
+ * @typedef {Object} RunAllOptions
+ * @property {import('./types.js').TestPlugin[]} plugins
+ * @property {import('./types.js').TestConfig} config
+ * @property {function({ done: number, total: number, pluginId: string, success: boolean }): void} [onProgress]
+ * @property {function(pluginId: string): void} [onPluginStart]
+ */
+
+/**
  * Runs all plugins sequentially — one at a time on the main thread.
  *
  * Sequential execution eliminates the network contention that caused
  * false-positive throttling signals when plugins competed for bandwidth
  * in parallel Web Workers.
  *
- * @param {import('./types.js').TestPlugin[]} plugins
- * @param {import('./types.js').TestConfig} config
- * @param {function({ done: number, total: number, pluginId: string, success: boolean }): void} [onProgress]
- *        Optional callback invoked after each plugin completes. Receives an
- *        object `{ done, total, pluginId, success }` where `done` is the
- *        number of completed plugins, `total` is the total plugin count,
- *        `pluginId` identifies the plugin that just finished, and `success`
- *        is true only when the result status is `'success'`.
+ * @param {RunAllOptions} options
  * @returns {Promise<import('./types.js').TestResult[]>}
  */
-export async function runAll(plugins, config, onProgress) {
+export async function runAll({ plugins, config, onProgress, onPluginStart }) {
     const results = [];
     for (const plugin of plugins) {
+        if (onPluginStart) {
+            onPluginStart(plugin.id);
+        }
         try {
             const timed = await runPluginWithTimeout(plugin, config);
             results.push(timed);

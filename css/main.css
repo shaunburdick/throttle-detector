@@ -647,6 +647,8 @@ button.history-entry:focus-visible {
     border-radius: var(--border-radius);
     margin-bottom: var(--spacing-xs);
     background-color: var(--color-bg-alt);
+    transition: background-color var(--transition-fast),
+        color var(--transition-fast);
 }
 
 .test-status-icon {
@@ -656,9 +658,26 @@ button.history-entry:focus-visible {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    transition: color var(--transition-fast);
+}
+
+/* Queued — clock icon, muted styling, no animation */
+.test-status-item--queued {
+    color: var(--color-text-muted);
+}
+
+.test-status-icon--queued {
+    color: var(--color-text-muted);
+}
+
+/* Running — spinner icon, blue accent, spin animation */
+.test-status-item--running {
+    color: var(--color-text);
+    background-color: #e8f0fe;
 }
 
 .test-status-icon--running {
+    color: var(--color-primary);
     animation: spin 1s linear infinite;
 }
 
@@ -667,12 +686,19 @@ button.history-entry:focus-visible {
     to { transform: rotate(360deg); }
 }
 
+/* Complete — green checkmark */
 .test-status-icon--complete {
     color: var(--color-success);
 }
 
+/* Error — red X */
 .test-status-icon--error {
     color: var(--color-danger);
+}
+
+.test-status-label {
+    margin-left: auto;
+    font-size: var(--font-size-sm);
 }
 
 /* ===== Responsive Design ===== */

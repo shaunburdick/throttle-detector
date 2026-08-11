@@ -19,7 +19,7 @@ describe('Test Runner', () => {
                 createSuccessPlugin({ id: 'p1', speedMbps: 50 }),
                 createSuccessPlugin({ id: 'p2', speedMbps: 100 }),
             ];
-            const results = await runAll(plugins, DEFAULT_CONFIG);
+            const results = await runAll({ plugins, config: DEFAULT_CONFIG });
             expect(results).toHaveLength(2);
             for (const result of results) {
                 expect(result.status).toBe('success');
@@ -32,7 +32,7 @@ describe('Test Runner', () => {
                 createSuccessPlugin({ id: 'ok', speedMbps: 50 }),
                 createErrorPlugin({ id: 'fail', errorMessage: 'Test failed' }),
             ];
-            const results = await runAll(plugins, DEFAULT_CONFIG);
+            const results = await runAll({ plugins, config: DEFAULT_CONFIG });
             expect(results).toHaveLength(2);
             const succeeded = results.filter(
                 (res) => res.status === 'success'
@@ -48,7 +48,7 @@ describe('Test Runner', () => {
                 createThrowingPlugin({ id: 'crash' }),
                 createSuccessPlugin({ id: 'also-ok', speedMbps: 50 }),
             ];
-            const results = await runAll(plugins, DEFAULT_CONFIG);
+            const results = await runAll({ plugins, config: DEFAULT_CONFIG });
             expect(results).toHaveLength(3);
             const succeeded = results.filter(
                 (res) => res.status === 'success'
@@ -57,7 +57,7 @@ describe('Test Runner', () => {
         });
 
         it('handles empty plugins array', async () => {
-            const results = await runAll([], DEFAULT_CONFIG);
+            const results = await runAll({ plugins: [], config: DEFAULT_CONFIG });
             expect(results).toHaveLength(0);
         });
 
@@ -65,7 +65,7 @@ describe('Test Runner', () => {
             const plugins = [
                 createSuccessPlugin({ id: 'test', speedMbps: 75 }),
             ];
-            const results = await runAll(plugins, DEFAULT_CONFIG);
+            const results = await runAll({ plugins, config: DEFAULT_CONFIG });
             const result = results[0];
 
             expect(result.targetName).toBeTruthy();
@@ -83,10 +83,13 @@ describe('Test Runner', () => {
                 createSuccessPlugin({ id: 'c', speedMbps: 30, delayMs: 10 }),
             ];
             const progressCalls = [];
-            const results = await runAll(plugins, DEFAULT_CONFIG,
-                ({ done, total, pluginId, success }) => {
+            const results = await runAll({
+                plugins,
+                config: DEFAULT_CONFIG,
+                onProgress: ({ done, total, pluginId, success }) => {
                     progressCalls.push({ done, total, pluginId, success });
-                });
+                },
+            });
             expect(results).toHaveLength(3);
             expect(progressCalls).toEqual([
                 { done: 1, total: 3, pluginId: 'a', success: true },
@@ -100,7 +103,33 @@ describe('Test Runner', () => {
                 createSuccessPlugin({ id: 'a', speedMbps: 10 }),
             ];
             // Should not throw — onProgress is optional
-            const results = await runAll(plugins, DEFAULT_CONFIG);
+            const results = await runAll({ plugins, config: DEFAULT_CONFIG });
+            expect(results).toHaveLength(1);
+        });
+
+        it('calls onPluginStart with correct pluginId before each plugin runs', async () => {
+            const plugins = [
+                createSuccessPlugin({ id: 'x', speedMbps: 10, delayMs: 10 }),
+                createSuccessPlugin({ id: 'y', speedMbps: 20, delayMs: 10 }),
+                createSuccessPlugin({ id: 'z', speedMbps: 30, delayMs: 10 }),
+            ];
+            const startCalls = [];
+            const results = await runAll({
+                plugins,
+                config: DEFAULT_CONFIG,
+                onPluginStart: (pluginId) => {
+                    startCalls.push(pluginId);
+                },
+            });
+            expect(results).toHaveLength(3);
+            expect(startCalls).toEqual(['x', 'y', 'z']);
+        });
+
+        it('does not throw when onPluginStart is omitted', async () => {
+            const plugins = [
+                createSuccessPlugin({ id: 'a', speedMbps: 10, delayMs: 10 }),
+            ];
+            const results = await runAll({ plugins, config: DEFAULT_CONFIG });
             expect(results).toHaveLength(1);
         });
 
@@ -111,10 +140,13 @@ describe('Test Runner', () => {
                 createSuccessPlugin({ id: 'also-ok', speedMbps: 100 }),
             ];
             const progressCalls = [];
-            const results = await runAll(plugins, DEFAULT_CONFIG,
-                ({ done, total, pluginId, success }) => {
+            const results = await runAll({
+                plugins,
+                config: DEFAULT_CONFIG,
+                onProgress: ({ done, total, pluginId, success }) => {
                     progressCalls.push({ done, total, pluginId, success });
-                });
+                },
+            });
             expect(results).toHaveLength(3);
             expect(progressCalls).toEqual([
                 { done: 1, total: 3, pluginId: 'ok', success: true },
@@ -142,7 +174,7 @@ describe('Test Runner', () => {
                 order.push('second');
                 return origSecond(cfg);
             };
-            const results = await runAll(plugins, DEFAULT_CONFIG);
+            const results = await runAll({ plugins, config: DEFAULT_CONFIG });
             expect(results).toHaveLength(2);
             // Sequential means first finishes before second starts
             expect(order).toEqual(['first', 'second']);
