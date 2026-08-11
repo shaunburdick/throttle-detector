@@ -6,23 +6,25 @@
 
 import { formatMbps, formatDuration } from './utils.js';
 
-const KIB = 1024;
-const MIB = 1024 * 1024;
 const ROW_INCONCLUSIVE = 'row-inconclusive';
 const BADGE_NEUTRAL = 'badge-neutral';
 const BADGE_ERROR = 'badge-error';
 
 // === HTML helpers (function declarations hoist) ===
 
+/** Shared element for HTML-escaping strings */
+const _escapeDiv = document.createElement('div');
+
 /** @param {string} str @returns {string} */
 function escape(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    _escapeDiv.textContent = str;
+    return _escapeDiv.innerHTML;
 }
 
 /** @param {number} bytes @returns {string} */
 function formatBytes(bytes) {
+    const KIB = 1024;
+    const MIB = 1024 * 1024;
     if (bytes < KIB) {
         return `${bytes} B`;
     }
@@ -115,6 +117,20 @@ function getVerdictExplanation(verdict) {
     return EXPLANATIONS[verdict.level] || 'Run a test to see results.';
 }
 
+/**
+ * Formats the deviation percentage string for a table cell.
+ *
+ * @param {import('./types.js').Discrepancy|undefined} disc
+ * @returns {string}
+ */
+function formatDeviation(disc) {
+    if (!disc || disc.percentageDeviation === null) {
+        return '\u2014';
+    }
+    return `${(disc.percentageDeviation > 0 ? '+' : '')
+        + disc.percentageDeviation.toFixed(1)}%`;
+}
+
 // === Table / card builders ===
 
 /**
@@ -132,15 +148,14 @@ function buildTable(run) {
         );
         const speed = result.status === 'success'
             ? formatMbps(result.downloadSpeedMbps) : '';
-        const deviation = disc && disc.percentageDeviation !== null
-            ? `${(disc.percentageDeviation > 0 ? '+' : '')
-              + disc.percentageDeviation.toFixed(1)  }%`
-            : '\u2014';
+        const deviation = formatDeviation(disc);
         const badge = getStatusBadge({ result, isBaseline, disc });
         const badgeCls = isBaseline ? 'badge-neutral' : getBadgeClass(disc, result.status);
+        const rowClass = isBaseline ? 'row-baseline' : getRowClass(disc, result.status);
 
-        rows += `<tr class="${getRowClass(disc, result.status)}">
+        rows += `<tr class="${rowClass}">
             <td>${escape(result.targetName)}</td>
+            <td><span class="badge badge-neutral" style="font-size:0.75rem">${escape(result.category)}</span></td>
             <td>${speed || '\u2014'}</td>
             <td>${formatDuration(result.durationMs)}</td>
             <td>${result.bytesTransferred > 0 ? formatBytes(result.bytesTransferred) : '\u2014'}</td>
@@ -154,7 +169,8 @@ function buildTable(run) {
         <table class="results-table" aria-label="Speed test results comparison">
             <caption id="results-heading">Speed Test Results</caption>
             <thead><tr>
-                <th scope="col">Target</th><th scope="col">Speed</th>
+                <th scope="col">Target</th><th scope="col">Category</th>
+                <th scope="col">Speed</th>
                 <th scope="col">Duration</th><th scope="col">Data Used</th>
                 <th scope="col">Deviation</th><th scope="col">Status</th>
                 <th scope="col">Details</th>

@@ -28,6 +28,7 @@ function timeoutResult(plugin, timeoutMs) {
                 bytesTransferred: 0,
                 errorMessage: `Timed out after ${timeoutMs / 1000} seconds`,
                 timestamp: new Date().toISOString(),
+                category: plugin.category,
             });
         }, timeoutMs);
     });
@@ -50,6 +51,7 @@ function errorResult(plugin, error) {
         bytesTransferred: 0,
         errorMessage: error.message || 'Unknown error',
         timestamp: new Date().toISOString(),
+        category: plugin.category,
     };
 }
 

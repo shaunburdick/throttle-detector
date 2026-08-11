@@ -49,6 +49,7 @@ export function createSuccessPlugin({
                 bytesTransferred: bytes,
                 errorMessage: null,
                 timestamp: new Date().toISOString(),
+                category: 'cdn',
             };
         },
     };
@@ -84,6 +85,7 @@ export function createErrorPlugin({
                 bytesTransferred: 0,
                 errorMessage,
                 timestamp: new Date().toISOString(),
+                category: 'cdn',
             };
         },
     };
@@ -118,6 +120,7 @@ export function createTimeoutPlugin({
                 bytesTransferred: 0,
                 errorMessage: 'Timed out',
                 timestamp: new Date().toISOString(),
+                category: 'cdn',
             };
         },
     };

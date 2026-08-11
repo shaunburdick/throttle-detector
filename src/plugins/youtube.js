@@ -46,25 +46,24 @@ function zeroSample() {
 }
 
 /**
- * Returns actual transfer bytes from the Resource Timing API.
+ * Returns actual transfer bytes from the Resource Timing API
+ * using O(1) lookup by exact URL.
  *
- * @param {string} urlPrefix
- * @param {number} fallback
+ * @param {string} url - Exact URL including cache-bust query param
+ * @param {number} fallback - Content-Length from response headers
  * @returns {number}
  */
-function getTransferBytes(urlPrefix, fallback) {
-    const entries = performance.getEntriesByType('resource');
-    const prefix = urlPrefix.split('?')[0];
-    for (const entry of entries) {
-        if (entry.name.startsWith(prefix)) {
-            if (entry.transferSize > 0) {
-                return entry.transferSize;
-            }
-            if (entry.encodedBodySize > 0) {
-                return entry.encodedBodySize;
-            }
-            return fallback;
-        }
+function getTransferBytes(url, fallback) {
+    const entries = performance.getEntriesByName(url);
+    if (entries.length === 0) {
+        return fallback;
+    }
+    const entry = entries[entries.length - 1];
+    if (entry.transferSize > 0) {
+        return entry.transferSize;
+    }
+    if (entry.encodedBodySize > 0) {
+        return entry.encodedBodySize;
     }
     return fallback;
 }
@@ -126,6 +125,7 @@ function buildResult({ status, speedMbps, durationMs, bytesTransferred,
         bytesTransferred,
         errorMessage,
         timestamp: new Date().toISOString(),
+        category: 'streaming',
     };
 }
 

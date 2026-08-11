@@ -78,6 +78,8 @@ function pruneToFit(history) {
     const slim = pruned.slice(0, 1).map((entry) => {
         const copy = { ...entry };
         delete copy.results;
+        copy.stripped = true;
+        copy.summary = '(Results trimmed to fit storage — re-run test to view)';
         return copy;
     });
     return JSON.stringify(slim);
@@ -96,6 +98,8 @@ export function save(run) {
         successCount: run.results.filter((res) => res.status === 'success').length,
         errorCount: run.results.filter((res) => res.status !== 'success').length,
         summary: buildSummary(run), verdict: run.verdict, results: run.results,
+        discrepancies: run.discrepancies,
+        baselinePluginId: run.baselinePluginId,
     };
     try {
         const history = loadFromStorage();

@@ -30,6 +30,7 @@ function createMockPlugin(pluginId, overrides = {}) {
                 bytesTransferred: 1024,
                 errorMessage: null,
                 timestamp: new Date().toISOString(),
+                category: 'cdn',
             };
         },
         ...overrides,

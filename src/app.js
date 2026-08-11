@@ -16,12 +16,12 @@ import { runAll } from './lib/test-runner.js';
 import { analyzeResults } from './lib/results-analyzer.js';
 import { presentJson } from './lib/results-presenter.js';
 import { generateRunId } from './lib/utils.js';
+import { save, loadAll, deleteRun, deleteAll } from './lib/history-manager.js';
 import {
     init, setRunning, updateProgress, updatePluginStatus,
     setResults, renderHistory, showErrorState, markPluginRunning,
+    buildErrorHtml,
 } from './lib/ui-manager.js';
-
-let historyManager = null;
 
 // ===== Helpers =====
 
@@ -50,19 +50,6 @@ function detectBrowserSupport() {
     return warnings;
 }
 
-/** @returns {Promise<object>} */
-async function ensureHistoryManager() {
-    if (historyManager) {
-        return historyManager;
-    }
-    const mod = await import('./lib/history-manager.js');
-    historyManager = {
-        save: mod.save, loadAll: mod.loadAll, getByRunId: mod.getByRunId,
-        deleteRun: mod.deleteRun, deleteAll: mod.deleteAll,
-    };
-    return historyManager;
-}
-
 /**
  * Collects results, analyzes them, presents output.
  *
@@ -87,9 +74,8 @@ function finalizeTestRun(results, extraWarnings) {
 /** @param {import('./lib/types.js').TestRun} testRun */
 async function persistAndRefreshHistory(testRun) {
     try {
-        const hm = await ensureHistoryManager();
-        hm.save(testRun);
-        renderHistory(hm.loadAll());
+        save(testRun);
+        renderHistory(loadAll());
     } catch {
         // History persistence failed — non-critical; continue without saving
         void 0;
@@ -103,13 +89,48 @@ async function persistAndRefreshHistory(testRun) {
  */
 async function loadHistoryEntry(runId) {
     try {
-        const hm = await ensureHistoryManager();
-        const entries = hm.loadAll();
+        const entries = loadAll();
         const entry = entries.find((e) => e.runId === runId);
         if (!entry) {
             return;
         }
 
+        // C-1: Slim entries have been trimmed to fit storage
+        if (entry.stripped) {
+            const testRun = {
+                runId: entry.runId,
+                timestamp: entry.timestamp,
+                results: [],
+                baselinePluginId: null,
+                discrepancies: [],
+                verdict: {
+                    level: 'no_data',
+                    message: entry.summary,
+                    affectedServices: [],
+                    indicator: 'gray',
+                },
+                warnings: [],
+            };
+            setResults(testRun);
+            return;
+        }
+
+        // M-4: Use cached discrepancies/verdict when available
+        if (entry.discrepancies && entry.verdict) {
+            const testRun = {
+                runId: entry.runId,
+                timestamp: entry.timestamp,
+                results: entry.results,
+                baselinePluginId: entry.baselinePluginId || null,
+                discrepancies: entry.discrepancies,
+                verdict: entry.verdict,
+                warnings: [],
+            };
+            setResults(testRun);
+            return;
+        }
+
+        // Fallback for legacy entries without cached fields
         const { baseline, discrepancies, verdict } = analyzeResults(
             entry.results
         );
@@ -149,9 +170,8 @@ function announceDeletion(msg) {
  */
 async function deleteHistoryEntry(runId) {
     try {
-        const hm = await ensureHistoryManager();
-        hm.deleteRun(runId);
-        renderHistory(hm.loadAll());
+        deleteRun(runId);
+        renderHistory(loadAll());
         announceDeletion('Test run deleted');
     } catch {
         void 0;
@@ -163,9 +183,8 @@ async function deleteHistoryEntry(runId) {
  */
 async function deleteAllHistory() {
     try {
-        const hm = await ensureHistoryManager();
-        const deletedCount = hm.deleteAll();
-        renderHistory(hm.loadAll());
+        const deletedCount = deleteAll();
+        renderHistory(loadAll());
         announceDeletion(`${deletedCount} test runs deleted`);
     } catch {
         void 0;
@@ -209,10 +228,22 @@ async function startTest() {
 
 async function bootstrapJsonMode() {
     try {
-        const hm = await ensureHistoryManager();
-        const history = hm.loadAll();
+        const history = loadAll();
         if (history.length > 0) {
             const latest = history[0];
+            if (latest.stripped) {
+                document.body.textContent = JSON.stringify({
+                    results: [],
+                    lastTestTimestamp: latest.timestamp,
+                    baselineName: null,
+                    verdict: {
+                        level: 'no_data',
+                        message: latest.summary || 'Results no longer available',
+                    },
+                    errors: [],
+                }, null, 2);
+                return;
+            }
             const { baseline, discrepancies, verdict } = analyzeResults(
                 latest.results
             );
@@ -244,8 +275,7 @@ async function bootstrapHtmlMode(warnings) {
     });
 
     try {
-        const hm = await ensureHistoryManager();
-        renderHistory(hm.loadAll());
+        renderHistory(loadAll());
     } catch {
         renderHistory([]);
     }
@@ -264,10 +294,11 @@ async function bootstrap() {
         } else {
             const main = document.getElementById('main-content');
             if (main) {
-                main.innerHTML = `<div class="error-state" role="alert">
-                    <span class="error-state-icon" aria-hidden="true">\u26A0\uFE0F</span>
-                    <h2>Unsupported Browser</h2>
-                    <p>${warnings[0]}</p></div>`;
+                main.innerHTML = buildErrorHtml({
+                    icon: '\u26A0\uFE0F',
+                    title: 'Unsupported Browser',
+                    message: warnings[0],
+                });
             }
         }
         return;
@@ -284,9 +315,10 @@ async function bootstrap() {
 bootstrap().catch((err) => {
     const main = document.getElementById('main-content');
     if (main) {
-        main.innerHTML = `<div class="error-state" role="alert">
-            <span class="error-state-icon" aria-hidden="true">\u274C</span>
-            <h2>Application Error</h2>
-            <p>${err.message || 'An unexpected error occurred'}</p></div>`;
+        main.innerHTML = buildErrorHtml({
+            icon: '\u274C',
+            title: 'Application Error',
+            message: err.message || 'An unexpected error occurred',
+        });
     }
 });

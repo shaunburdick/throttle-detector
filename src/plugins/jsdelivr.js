@@ -41,6 +41,22 @@ function zeroResult() {
 }
 
 /**
+ * Returns actual transfer bytes using O(1) getEntriesByName lookup.
+ *
+ * @param {string} url - Exact URL including cache-bust query param
+ * @param {number} contentLength - Fallback from Content-Length header
+ * @returns {number}
+ */
+function getTransferBytes(url, contentLength) {
+    const entries = performance.getEntriesByName(url);
+    if (entries.length === 0) {
+        return contentLength;
+    }
+    const entry = entries[entries.length - 1];
+    return entry.transferSize || entry.encodedBodySize || contentLength;
+}
+
+/**
  * Downloads a file from jsDelivr and measures throughput.
  *
  * Uses Resource Timing API with prefix matching for reliable byte counts
@@ -74,21 +90,7 @@ async function downloadMeasure(url, timeoutMs) {
         await response.blob();
         const durationMs = performance.now() - fetchStart;
 
-        // Try Resource Timing first, fall back to Content-Length header
-        const urlPrefix = url.split('?')[0];
-        let bytes = 0;
-        const entries = performance.getEntriesByType('resource');
-        for (const entry of entries) {
-            if (entry.name.startsWith(urlPrefix)) {
-                bytes = entry.transferSize
-                    || entry.encodedBodySize
-                    || contentLength;
-                break;
-            }
-        }
-        if (bytes === 0) {
-            bytes = contentLength;
-        }
+        const bytes = getTransferBytes(url, contentLength);
         if (bytes === 0) {
             return zeroResult();
         }
@@ -119,6 +121,7 @@ function buildResult({ status, speedMbps, durationMs, bytesTransferred,
         bytesTransferred,
         errorMessage,
         timestamp: new Date().toISOString(),
+        category: 'cdn',
     };
 }
 

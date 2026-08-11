@@ -5,6 +5,7 @@
  */
 
 import { formatTimestamp } from './utils.js';
+import { presentHtml } from './results-presenter.js';
 
 // ===== State =====
 
@@ -16,11 +17,13 @@ let onHistoryDeleteAllCb = null;
 
 // ===== Helpers =====
 
+/** Shared element for HTML-escaping strings */
+const _escDiv = document.createElement('div');
+
 /** @param {string} str @returns {string} */
 function esc(str) {
-    const element = document.createElement('div');
-    element.textContent = str;
-    return element.innerHTML;
+    _escDiv.textContent = str;
+    return _escDiv.innerHTML;
 }
 
 /** @param {string} str @returns {string} */
@@ -54,6 +57,26 @@ const RESULTS_AREA_ID = 'results-area';
 const HISTORY_AREA_ID = 'history-area';
 const STATUS_LIVE_ID = 'status-live';
 const RUN_BTN_ID = 'run-test-btn';
+
+/**
+ * Builds error state HTML for consistent rendering across the app.
+ *
+ * @param {object} opts
+ * @param {string} opts.icon - Unicode emoji for the error icon
+ * @param {string} opts.title - Heading text
+ * @param {string} opts.message - Description paragraph
+ * @param {string[]} [opts.items] - Optional list of detail items
+ * @returns {string}
+ */
+export function buildErrorHtml({ icon, title, message, items }) {
+    const itemList = items ? items.map((item) => `<li>${esc(item)}</li>`).join('') : '';
+    const listHtml = items && items.length > 0
+        ? `<ul style="text-align:left;max-width:400px;margin:0 auto">${itemList}</ul>`
+        : '';
+    const iconSpan = `<span class="error-state-icon" aria-hidden="true">${icon}</span>`;
+    const body = `${iconSpan}<h2>${esc(title)}</h2><p>${esc(message)}</p>${listHtml}`;
+    return `<div class="error-state" role="alert">${body}</div>`;
+}
 
 // ===== Render =====
 
@@ -132,6 +155,7 @@ export function setRunning(plugins) {
             + '<span class="test-status-icon test-status-icon--queued"'
             + ' aria-hidden="true">\u23F3</span>'
             + `<span>${esc(plugin.name)}</span>`
+            + `<span class="badge badge-neutral" style="font-size:0.75rem">${esc(plugin.category)}</span>`
             + '<span class="test-status-label">Queued</span></li>';
     }
 
@@ -237,7 +261,7 @@ export function updatePluginStatus(pluginId, ok) {
 }
 
 /** @param {import('./types.js').TestRun} run */
-export async function setResults(run) {
+export function setResults(run) {
     const allFailed = run.results.every((res) => res.status !== 'success');
     currentState = allFailed ? 'error-full' : 'complete';
     updateBtn(false);
@@ -247,12 +271,7 @@ export async function setResults(run) {
         return;
     }
 
-    try {
-        const { presentHtml } = await import('./results-presenter.js');
-        area.innerHTML = presentHtml(run);
-    } catch {
-        return;
-    }
+    area.innerHTML = presentHtml(run);
 
     // Move focus to results heading after content replacement
     const heading = area.querySelector('#results-heading');
@@ -309,6 +328,7 @@ function showInlineConfirm(triggerEl, message, onConfirm) {
     wrapper.appendChild(yesBtn);
     wrapper.appendChild(cancelBtn);
 
+    /** Restores the original element and returns focus to it. */
     function restore() {
         if (!triggerEl.parentNode) {
             wrapper.replaceWith(triggerEl);
@@ -317,12 +337,34 @@ function showInlineConfirm(triggerEl, message, onConfirm) {
         announce('Deletion cancelled.');
     }
 
+    /**
+     * Focus-trap handler: cycles focus between Yes and Cancel buttons.
+     * Tab/Shift+Tab cannot escape past these two buttons.
+     *
+     * @param {KeyboardEvent} event
+     */
     function onKeydown(event) {
-        if (event.key !== 'Escape') {
+        if (event.key === 'Escape') {
+            event.stopPropagation();
+            restore();
             return;
         }
-        event.stopPropagation();
-        restore();
+        if (event.key === 'Tab') {
+            const buttons = [yesBtn, cancelBtn];
+            const currentIndex = buttons.indexOf(document.activeElement);
+            let nextIndex;
+            if (event.shiftKey) {
+                // Shift+Tab: move backward, wrap to last
+                nextIndex = currentIndex <= 0
+                    ? buttons.length - 1 : currentIndex - 1;
+            } else {
+                // Tab: move forward, wrap to first
+                nextIndex = currentIndex >= buttons.length - 1
+                    ? 0 : currentIndex + 1;
+            }
+            event.preventDefault();
+            buttons[nextIndex].focus();
+        }
     }
 
     yesBtn.addEventListener('click', () => {
@@ -444,12 +486,11 @@ export function showErrorState(reasons) {
         return;
     }
 
-    const items = reasons.map((reason) => `<li>${esc(reason)}</li>`).join('');
-    area.innerHTML = '<div class="error-state" role="alert">'
-        + '<span class="error-state-icon" aria-hidden="true">\u274C</span>'
-        + '<h2>Unable to Determine</h2>'
-        + '<p>Tests could not complete.</p>'
-        + '<ul style="text-align:left;max-width:400px;margin:0 auto">'
-        + `${items}</ul></div>`;
+    area.innerHTML = buildErrorHtml({
+        icon: '\u274C',
+        title: 'Unable to Determine',
+        message: 'Tests could not complete.',
+        items: reasons,
+    });
     announce('Tests failed. Unable to determine throttling.');
 }

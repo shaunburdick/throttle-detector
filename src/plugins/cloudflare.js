@@ -75,6 +75,7 @@ function buildResult({ status, speedMbps, durationMs, bytesTransferred,
         status, downloadSpeedMbps: speedMbps,
         durationMs, bytesTransferred, errorMessage,
         timestamp: new Date().toISOString(),
+        category: 'cdn',
     };
 }
 
