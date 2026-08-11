@@ -92,9 +92,13 @@ async function downloadMeasure(url, timeoutMs) {
         if (!resp.ok) {
             return zeroSample();
         }
+        // Capture Content-Length before consuming body — fallback for
+        // CDNs that don't set Timing-Allow-Origin (fonts.gstatic.com).
+        const cl = resp.headers.get('content-length');
+        const contentLength = cl ? parseInt(cl, 10) : 0;
         await resp.blob();
         const dur = performance.now() - t0;
-        const bytes = getTransferBytes(cacheBust, 0);
+        const bytes = getTransferBytes(cacheBust, contentLength);
         if (bytes === 0) {
             return zeroSample();
         }

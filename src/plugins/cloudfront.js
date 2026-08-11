@@ -43,30 +43,6 @@ function zeroSample() {
 }
 
 /**
- * Returns the actual bytes transferred using the Resource Timing API.
- *
- * @param {string} urlPrefix
- * @param {number} fallback
- * @returns {number}
- */
-function getTransferBytes(urlPrefix, fallback) {
-    const entries = performance.getEntriesByType('resource');
-    const prefix = urlPrefix.split('?')[0];
-    for (const entry of entries) {
-        if (entry.name.startsWith(prefix)) {
-            if (entry.transferSize > 0) {
-                return entry.transferSize;
-            }
-            if (entry.encodedBodySize > 0) {
-                return entry.encodedBodySize;
-            }
-            return fallback;
-        }
-    }
-    return fallback;
-}
-
-/**
  * Picks the next chunk size based on recent speed samples.
  *
  * @param {number[]} samples
@@ -114,9 +90,12 @@ async function downloadRange(baseUrl, chunkBytes, timeoutMs) {
         if (!resp.ok && resp.status !== HTTP_PARTIAL_CONTENT) {
             return zeroSample();
         }
-        await resp.blob();
+        const blob = await resp.blob();
         const dur = performance.now() - t0;
-        const bytes = getTransferBytes(url, chunkBytes);
+        // Use blob.size for Range responses — Resource Timing API's
+        // transferSize can report the full file size, not just the
+        // range-transmitted bytes, inflating speed measurements.
+        const bytes = blob.size;
         if (bytes === 0) {
             return zeroSample();
         }
