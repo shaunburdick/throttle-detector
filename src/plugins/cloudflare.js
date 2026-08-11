@@ -154,4 +154,4 @@ const cloudflarePlugin = {
 };
 
 registerPlugin(cloudflarePlugin);
-export { cloudflarePlugin };
+export { cloudflarePlugin, chunkSizes, adjustChunkIndex };

@@ -176,27 +176,23 @@ export async function downloadRange({ url, chunkBytes, timeoutMs,
  * Resolves threshold config with defaults for adaptive chunk sizing.
  *
  * @param {object} [opts]
- * @returns {{ minChunk: number, maxChunk: number, thresholds: Array<{max: number, size: number}>, maxFast: number }}
+ * @returns {{ minChunk: number, maxChunk: number, buckets: Array<{max: number, size: number}>, maxFast: number }}
  */
 function resolveRangeConfig(opts = {}) {
     const minChunk = opts.minChunk ?? DEFAULT_MIN_CHUNK;
     const maxChunk = opts.maxChunk ?? DEFAULT_MAX_CHUNK;
     const maxFast = opts.maxFast ?? DEFAULT_MAX_FAST;
-    const thresholds = [
-        {
-            max: opts.slowThreshold ?? DEFAULT_SLOW_THRESHOLD,
-            size: opts.midChunk ?? DEFAULT_MID_CHUNK,
-        },
-        {
-            max: opts.mediumThreshold ?? DEFAULT_MEDIUM_THRESHOLD,
-            size: opts.largeChunk ?? DEFAULT_LARGE_CHUNK,
-        },
-        {
-            max: opts.fastThreshold ?? DEFAULT_FAST_THRESHOLD,
-            size: maxFast,
-        },
+    const midChunk = opts.midChunk ?? DEFAULT_MID_CHUNK;
+    const largeChunk = opts.largeChunk ?? DEFAULT_LARGE_CHUNK;
+    const slowThreshold = opts.slowThreshold ?? DEFAULT_SLOW_THRESHOLD;
+    const mediumThreshold = opts.mediumThreshold ?? DEFAULT_MEDIUM_THRESHOLD;
+    const fastThreshold = opts.fastThreshold ?? DEFAULT_FAST_THRESHOLD;
+    const buckets = [
+        { max: slowThreshold, size: minChunk },
+        { max: mediumThreshold, size: midChunk },
+        { max: fastThreshold, size: largeChunk },
     ];
-    return { minChunk, maxChunk, thresholds, maxFast };
+    return { minChunk, maxChunk, buckets, maxFast };
 }
 
 /**
@@ -220,15 +216,12 @@ function sampleAvg(values) {
  * @returns {number} Next chunk size in bytes
  */
 export function adaptRangeChunkSize(samples, opts = {}) {
-    const { minChunk, maxChunk, thresholds, maxFast } = resolveRangeConfig(opts);
+    const { minChunk, maxChunk, buckets, maxFast } = resolveRangeConfig(opts);
     if (samples.length === 0) {
         return minChunk;
     }
     const avg = sampleAvg(samples);
-    if (avg < thresholds[0].max) {
-        return minChunk;
-    }
-    for (const bucket of thresholds) {
+    for (const bucket of buckets) {
         if (avg < bucket.max) {
             return bucket.size;
         }

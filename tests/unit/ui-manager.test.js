@@ -15,10 +15,10 @@ vi.mock('../../src/lib/results-presenter.js', () => ({
         if (!run || run.results.length === 0) {
             return '<div class="empty-state"><p>No results</p></div>';
         }
-        return `<div class="results-section" aria-labelledby="results-heading">`
-            + `<table><caption id="results-heading">Results</caption></table>`
+        return '<div class="results-section" aria-labelledby="results-heading">'
+            + '<table><caption id="results-heading">Results</caption></table>'
             + `<div class="verdict-card">Verdict: ${run.verdict?.message || ''}</div>`
-            + `</div>`;
+            + '</div>';
     }),
 }));
 
