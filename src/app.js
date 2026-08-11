@@ -210,6 +210,139 @@ async function startTest() {
 
 // ===== Bootstrap =====
 
+/**
+ * Theme management state and helpers.
+ *
+ * @module app (theme section)
+ */
+
+/** localStorage key for persisted theme preference */
+const THEME_KEY = 'throttle-detector-theme';
+
+/** Valid theme values */
+const THEME_AUTO = 'auto';
+const THEME_LIGHT = 'light';
+const THEME_DARK = 'dark';
+
+/** Unicode icons for each theme state */
+const THEME_ICONS = {
+    [THEME_AUTO]: '\u2699',   // gear / system
+    [THEME_LIGHT]: '\u2600',  // sun
+    [THEME_DARK]: '\u263E',   // moon
+};
+
+/** @type {string} */
+let currentTheme = THEME_AUTO;
+
+/**
+ * Returns the effective color scheme, resolving 'auto' against the
+ * system `prefers-color-scheme` media query.
+ *
+ * @returns {'light'|'dark'}
+ */
+function getEffectiveTheme() {
+    if (currentTheme === THEME_AUTO) {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? THEME_DARK : THEME_LIGHT;
+    }
+    return currentTheme;
+}
+
+/**
+ * Applies the theme to the document by setting or removing the
+ * `data-theme` attribute on `<html>`.
+ */
+function applyTheme() {
+    const effective = getEffectiveTheme();
+    if (effective === THEME_DARK) {
+        document.documentElement.setAttribute('data-theme', THEME_DARK);
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+    }
+}
+
+/**
+ * Updates the toggle button label and aria-label to reflect the
+ * current theme selection.
+ */
+function updateThemeButton() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) {
+        return;
+    }
+    const icon = btn.querySelector('.theme-toggle-label');
+    if (icon) {
+        icon.textContent = THEME_ICONS[currentTheme] || THEME_ICONS[THEME_AUTO];
+    }
+    btn.setAttribute('aria-label', `Theme: ${currentTheme} (click to cycle)`);
+}
+
+/** Saves the current theme choice to localStorage. */
+function saveTheme() {
+    try {
+        localStorage.setItem(THEME_KEY, currentTheme);
+    } catch {
+        // Storage unavailable — non-critical
+        void 0;
+    }
+}
+
+/**
+ * Cycles the theme: auto → dark → light → auto.
+ * Applies, saves, and updates the button.
+ */
+function cycleTheme() {
+    if (currentTheme === THEME_AUTO) {
+        currentTheme = THEME_DARK;
+    } else if (currentTheme === THEME_DARK) {
+        currentTheme = THEME_LIGHT;
+    } else {
+        currentTheme = THEME_AUTO;
+    }
+    applyTheme();
+    saveTheme();
+    updateThemeButton();
+}
+
+/**
+ * Initializes theme management:
+ * 1. Reads saved preference from localStorage
+ * 2. Applies the correct `data-theme` attribute
+ * 3. Wires the toggle button
+ * 4. Listens for system preference changes (when in auto mode)
+ */
+function initTheme() {
+    // Restore saved preference
+    try {
+        const saved = localStorage.getItem(THEME_KEY);
+        if (saved === THEME_LIGHT || saved === THEME_DARK || saved === THEME_AUTO) {
+            currentTheme = saved;
+        }
+    } catch {
+        // Storage unavailable — use default (auto)
+        void 0;
+    }
+
+    applyTheme();
+    updateThemeButton();
+
+    // Wire toggle button
+    const btn = document.getElementById('theme-toggle');
+    if (btn) {
+        btn.addEventListener('click', cycleTheme);
+    }
+
+    // Listen for system preference changes
+    const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    darkQuery.addEventListener('change', () => {
+        if (currentTheme === THEME_AUTO) {
+            applyTheme();
+        }
+    });
+}
+
+// ---- Bootstrap continuation ---
+
 async function bootstrapJsonMode() {
     try {
         const history = loadAll();
@@ -266,6 +399,8 @@ async function bootstrapHtmlMode(warnings) {
 }
 
 async function bootstrap() {
+    initTheme();
+
     const warnings = detectBrowserSupport();
     const critical = warnings.some((warning) =>
         warning.includes('Performance API'));
