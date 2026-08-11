@@ -6,6 +6,7 @@
 
 import { formatTimestamp } from './utils.js';
 import { presentHtml } from './results-presenter.js';
+import { escapeHtml } from './dom-utils.js';
 
 // ===== State =====
 
@@ -16,15 +17,6 @@ let onHistoryDeleteCb = null;
 let onHistoryDeleteAllCb = null;
 
 // ===== Helpers =====
-
-/** Shared element for HTML-escaping strings */
-const _escDiv = document.createElement('div');
-
-/** @param {string} str @returns {string} */
-function esc(str) {
-    _escDiv.textContent = str;
-    return _escDiv.innerHTML;
-}
 
 /** @param {string} str @returns {string} */
 function escAttr(str) {
@@ -69,12 +61,12 @@ const RUN_BTN_ID = 'run-test-btn';
  * @returns {string}
  */
 export function buildErrorHtml({ icon, title, message, items }) {
-    const itemList = items ? items.map((item) => `<li>${esc(item)}</li>`).join('') : '';
+    const itemList = items ? items.map((item) => `<li>${escapeHtml(item)}</li>`).join('') : '';
     const listHtml = items && items.length > 0
         ? `<ul style="text-align:left;max-width:400px;margin:0 auto">${itemList}</ul>`
         : '';
     const iconSpan = `<span class="error-state-icon" aria-hidden="true">${icon}</span>`;
-    const body = `${iconSpan}<h2>${esc(title)}</h2><p>${esc(message)}</p>${listHtml}`;
+    const body = `${iconSpan}<h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p>${listHtml}`;
     return `<div class="error-state" role="alert">${body}</div>`;
 }
 
@@ -92,7 +84,7 @@ function render(warnings) {
     for (const warning of warnings) {
         html += '<div class="warning-banner" role="alert">'
             + '<span aria-hidden="true">\u26A0\uFE0F</span> '
-            + `${esc(warning)}</div>`;
+            + `${escapeHtml(warning)}</div>`;
     }
 
     const running = currentState === 'running';
@@ -154,8 +146,8 @@ export function setRunning(plugins) {
             + ` data-plugin-id="${escAttr(plugin.id)}">`
             + '<span class="test-status-icon test-status-icon--queued"'
             + ' aria-hidden="true">\u23F3</span>'
-            + `<span>${esc(plugin.name)}</span>`
-            + `<span class="badge badge-neutral" style="font-size:0.75rem">${esc(plugin.category)}</span>`
+            + `<span>${escapeHtml(plugin.name)}</span>`
+            + `<span class="badge badge-neutral" style="font-size:0.75rem">${escapeHtml(plugin.category)}</span>`
             + '<span class="test-status-label">Queued</span></li>';
     }
 
@@ -202,7 +194,7 @@ export function markPluginRunning(pluginId) {
     }
 }
 
-const PERCENTAGE_MULTIPLIER = 100;
+const PERCENT_SCALE = 100;
 
 /** @type {number} Tracks last announced completion count for debouncing */
 let lastAnnouncedDone = 0;
@@ -216,7 +208,7 @@ const PROGRESS_ANNOUNCE_THROTTLE_MS = 1000;
 /** @param {number} done @param {number} total */
 export function updateProgress(done, total) {
     const pct = total > 0
-        ? Math.round((done / total) * PERCENTAGE_MULTIPLIER) : 0;
+        ? Math.round((done / total) * PERCENT_SCALE) : 0;
     const bar = document.querySelector('.progress-bar');
     const txt = document.querySelector('.progress-text');
     const fill = document.querySelector('.progress-bar-fill');
@@ -297,9 +289,42 @@ function renderEmptyHistory(area) {
 }
 
 /**
+ * Creates a focus-trap keydown handler for inline confirm dialogs.
+ *
+ * Cycles focus between the Yes and Cancel buttons on Tab/Shift+Tab.
+ * Calls `onEscape` when Escape is pressed.
+ *
+ * @param {HTMLButtonElement} yesBtn
+ * @param {HTMLButtonElement} cancelBtn
+ * @param {() => void} onEscape
+ * @returns {(event: KeyboardEvent) => void}
+ */
+function createConfirmFocusTrap(yesBtn, cancelBtn, onEscape) {
+    return function onKeydown(event) {
+        if (event.key === 'Escape') {
+            event.stopPropagation();
+            onEscape();
+            return;
+        }
+        if (event.key === 'Tab') {
+            const buttons = [yesBtn, cancelBtn];
+            const currentIndex = buttons.indexOf(document.activeElement);
+            let nextIndex;
+            if (event.shiftKey) {
+                nextIndex = currentIndex <= 0 ? buttons.length - 1 : currentIndex - 1;
+            } else {
+                nextIndex = currentIndex >= buttons.length - 1 ? 0 : currentIndex + 1;
+            }
+            event.preventDefault();
+            buttons[nextIndex].focus();
+        }
+    };
+}
+
+/**
  * Replaces the trigger element with an inline confirmation UI.
  * Calls onConfirm when "Yes" is clicked; restores the original element
- * when "Cancel" is clicked or Escape is pressed.
+ * when "Cancel" is clicked, Escape is pressed, or user clicks outside.
  *
  * @param {HTMLElement} triggerEl - Element to replace with confirmation
  * @param {string} message - Confirmation message text
@@ -328,8 +353,14 @@ function showInlineConfirm(triggerEl, message, onConfirm) {
     wrapper.appendChild(yesBtn);
     wrapper.appendChild(cancelBtn);
 
+    let cancelled = false;
+
     /** Restores the original element and returns focus to it. */
     function restore() {
+        if (cancelled) {
+            return;
+        }
+        cancelled = true;
         if (!triggerEl.parentNode) {
             wrapper.replaceWith(triggerEl);
         }
@@ -338,41 +369,34 @@ function showInlineConfirm(triggerEl, message, onConfirm) {
     }
 
     /**
-     * Focus-trap handler: cycles focus between Yes and Cancel buttons.
-     * Tab/Shift+Tab cannot escape past these two buttons.
+     * Click-outside-to-dismiss: if user clicks anywhere outside the
+     * inline confirm wrapper, restore the original element.
      *
-     * @param {KeyboardEvent} event
+     * Self-cleans if the wrapper is detached or cancelled, removing
+     * itself from the document listener list.
+     *
+     * @param {MouseEvent} event
      */
-    function onKeydown(event) {
-        if (event.key === 'Escape') {
-            event.stopPropagation();
-            restore();
+    function onDocumentClick(event) {
+        if (cancelled || !wrapper.isConnected) {
+            document.removeEventListener('click', onDocumentClick, true);
             return;
         }
-        if (event.key === 'Tab') {
-            const buttons = [yesBtn, cancelBtn];
-            const currentIndex = buttons.indexOf(document.activeElement);
-            let nextIndex;
-            if (event.shiftKey) {
-                // Shift+Tab: move backward, wrap to last
-                nextIndex = currentIndex <= 0
-                    ? buttons.length - 1 : currentIndex - 1;
-            } else {
-                // Tab: move forward, wrap to first
-                nextIndex = currentIndex >= buttons.length - 1
-                    ? 0 : currentIndex + 1;
-            }
-            event.preventDefault();
-            buttons[nextIndex].focus();
+        if (!wrapper.contains(event.target)) {
+            event.stopPropagation();
+            restore();
         }
     }
 
     yesBtn.addEventListener('click', () => {
+        cancelled = true;
+        document.removeEventListener('click', onDocumentClick, true);
         onConfirm();
     });
 
     cancelBtn.addEventListener('click', restore);
-    wrapper.addEventListener('keydown', onKeydown);
+    wrapper.addEventListener('keydown', createConfirmFocusTrap(yesBtn, cancelBtn, restore));
+    document.addEventListener('click', onDocumentClick, true);
 
     triggerEl.replaceWith(wrapper);
     cancelBtn.focus();
@@ -406,7 +430,7 @@ function buildHistoryHtml(entries, count) {
             + ` aria-label="Test run from ${formatTimestamp(entry.timestamp)}"`
             + ` data-run-id="${escAttr(entry.runId)}">`
             + '<span class="history-entry-summary">'
-            + `${esc(entry.summary)}</span>`
+            + `${escapeHtml(entry.summary)}</span>`
             + '<span class="history-entry-timestamp">'
             + `${formatTimestamp(entry.timestamp)}</span></button>`
             + `${deleteBtnHtml}</li>`;

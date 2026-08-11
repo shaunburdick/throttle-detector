@@ -18,7 +18,7 @@ import {
     createRangeBasedRunLoop,
 } from '../../src/lib/plugin-runner.js';
 import {
-    cloudflarePlugin, chunkSizes, adjustChunkIndex,
+    cloudflarePlugin, CHUNK_SIZES, adjustChunkIndex,
 } from '../../src/plugins/cloudflare.js';
 
 // ===== Setup =====
@@ -457,26 +457,23 @@ describe('Cloudflare Plugin', () => {
         expect(typeof cloudflarePlugin.run).toBe('function');
     });
 
-    describe('chunkSizes', () => {
-        it('returns an array of 7 chunk sizes', () => {
-            const sizes = chunkSizes();
-            expect(sizes).toHaveLength(7);
+    describe('CHUNK_SIZES', () => {
+        it('contains 7 chunk sizes', () => {
+            expect(CHUNK_SIZES).toHaveLength(7);
         });
 
         it('has increasing chunk sizes', () => {
-            const sizes = chunkSizes();
-            for (let i = 1; i < sizes.length; i++) {
-                expect(sizes[i]).toBeGreaterThan(sizes[i - 1]);
+            for (let i = 1; i < CHUNK_SIZES.length; i++) {
+                expect(CHUNK_SIZES[i]).toBeGreaterThan(CHUNK_SIZES[i - 1]);
             }
         });
 
         it('starts at 256 KiB', () => {
-            expect(chunkSizes()[0]).toBe(256 * 1024);
+            expect(CHUNK_SIZES[0]).toBe(256 * 1024);
         });
 
         it('ends at 25 MiB', () => {
-            const sizes = chunkSizes();
-            expect(sizes[sizes.length - 1]).toBe(25 * 1024 * 1024);
+            expect(CHUNK_SIZES[CHUNK_SIZES.length - 1]).toBe(25 * 1024 * 1024);
         });
     });
 

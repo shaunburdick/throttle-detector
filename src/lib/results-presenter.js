@@ -5,21 +5,13 @@
  */
 
 import { formatMbps, formatDuration } from './utils.js';
+import { escapeHtml } from './dom-utils.js';
 
 const ROW_INCONCLUSIVE = 'row-inconclusive';
 const BADGE_NEUTRAL = 'badge-neutral';
 const BADGE_ERROR = 'badge-error';
 
 // === HTML helpers (function declarations hoist) ===
-
-/** Shared element for HTML-escaping strings */
-const _escapeDiv = document.createElement('div');
-
-/** @param {string} str @returns {string} */
-function escape(str) {
-    _escapeDiv.textContent = str;
-    return _escapeDiv.innerHTML;
-}
 
 /** @param {number} bytes @returns {string} */
 function formatBytes(bytes) {
@@ -154,14 +146,14 @@ function buildTable(run) {
         const rowClass = isBaseline ? 'row-baseline' : getRowClass(disc, result.status);
 
         rows += `<tr class="${rowClass}">
-            <td>${escape(result.targetName)}</td>
-            <td><span class="badge badge-neutral" style="font-size:0.75rem">${escape(result.category)}</span></td>
+            <td>${escapeHtml(result.targetName)}</td>
+            <td><span class="badge badge-neutral" style="font-size:0.75rem">${escapeHtml(result.category)}</span></td>
             <td>${speed || '\u2014'}</td>
             <td>${formatDuration(result.durationMs)}</td>
             <td>${result.bytesTransferred > 0 ? formatBytes(result.bytesTransferred) : '\u2014'}</td>
             <td aria-label="${deviation}">${deviation}</td>
             <td><span class="badge ${badgeCls}">${badge}</span></td>
-            ${result.errorMessage ? `<td>${escape(result.errorMessage)}</td>` : '<td>\u2014</td>'}
+            ${result.errorMessage ? `<td>${escapeHtml(result.errorMessage)}</td>` : '<td>\u2014</td>'}
         </tr>`;
     }
 
@@ -193,8 +185,8 @@ function buildVerdictCard(verdict) {
     return `<div class="verdict-card verdict-card--${verdict.indicator}" role="status" aria-live="polite">
         <span class="verdict-indicator" aria-hidden="true">${icon}</span>
         <div class="verdict-text">
-            <h2>${escape(verdict.message)}</h2>
-            <p>${escape(explanation)}</p>
+            <h2>${escapeHtml(verdict.message)}</h2>
+            <p>${escapeHtml(explanation)}</p>
         </div></div>`;
 }
 
@@ -203,7 +195,7 @@ function buildDetails(run) {
     if (!run.warnings || run.warnings.length === 0) {
         return '';
     }
-    const items = run.warnings.map((warning) => `<li>${escape(warning)}</li>`).join('');
+    const items = run.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('');
     return `<details class="test-details fade-in">
         <summary>Warnings (${run.warnings.length})</summary><ul>${items}</ul></details>`;
 }

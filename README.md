@@ -143,6 +143,7 @@ interface TestConfig {
 interface TestResult {
     targetName: string;         // Display name of the test target
     pluginId: string;           // Matches TestPlugin.id
+    category: 'streaming' | 'cdn' | 'manufactured';
     status: 'success' | 'error' | 'timeout';
     downloadSpeedMbps: number | null;  // Null on error/timeout
     durationMs: number;         // Total test duration
