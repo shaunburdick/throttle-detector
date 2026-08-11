@@ -189,8 +189,10 @@ async function startTest() {
     const extraWarnings = [];
 
     try {
-        const results = await runAll(plugins, config);
-        updateProgress(results.length, plugins.length);
+        const results = await runAll(plugins, config,
+            (done, total) => {
+                updateProgress(done, total);
+            });
         for (const result of results) {
             updatePluginStatus(result.pluginId, result.status === 'success');
         }
