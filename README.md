@@ -8,11 +8,12 @@ leaving generic speed tests untouched. A connection that shows 200 Mbps on
 Speedtest.net might only get 50 Mbps from Netflix's servers -- but a single
 speed test will never reveal this.
 
-**How this tool helps**: It runs speed tests against four different service
-origins (Cloudflare, Netflix/Fast.com, Google CDN, and jsDelivr CDN) sequentially,
-then flags significant discrepancies. A large gap between a
-service-specific test and the baseline is a strong signal that your ISP is
-selectively throttling that service.
+**How this tool helps**: It runs speed tests against six different service
+origins (Cloudflare, AWS CloudFront, YouTube CDN, GitHub/Fastly,
+jsDelivr CDN, and Bunny CDN) sequentially, then flags significant
+discrepancies. A large gap between a service-specific test and the
+baseline is a strong signal that your ISP is selectively throttling
+that service.
 
 ## Quick Start
 
@@ -23,7 +24,7 @@ npm install
 # Serve locally on http://localhost:8000
 npm start
 
-# Run the test suite (82 tests)
+# Run the test suite (168 tests)
 npm test
 
 # Run linting
@@ -89,6 +90,7 @@ throttle-detector/
 │   ├── lib/                    # Core modules
 │   │   ├── types.js            # JSDoc typedefs (TestPlugin, TestResult, etc.)
 │   │   ├── plugin-registry.js  # Central plugin registration and discovery
+│   │   ├── plugin-runner.js    # Shared download primitives and run loop factories
 │   │   ├── test-runner.js      # Sequential dispatch with Promise.race() guards
 │   │   ├── results-analyzer.js # Discrepancy computation and verdict generation
 │   │   ├── results-presenter.js# HTML table and JSON output rendering
@@ -97,9 +99,11 @@ throttle-detector/
 │   │   └── utils.js            # Shared helpers (runId, formatting, etc.)
 │   ├── plugins/                # Test target modules (self-registering)
 │   │   ├── cloudflare.js       # Baseline: Cloudflare speed test CDN
-│   │   ├── fast-com.js         # Netflix Open Connect CDN (streaming)
-│   │   ├── google-cdn.js       # Google CDN via gstatic images
-│   │   └── jsdelivr.js         # jsDelivr global CDN
+│   │   ├── cloudfront.js       # AWS CloudFront CDN (adaptive Range requests)
+│   │   ├── youtube.js          # Google CDN via fonts.gstatic.com
+│   │   ├── github.js           # GitHub raw CDN (Fastly, Range requests)
+│   │   ├── jsdelivr.js         # jsDelivr global CDN
+│   │   └── bunny-cdn.js        # Bunny CDN font delivery service
 ├── tests/
 │   ├── unit/                   # Isolated module tests
 │   ├── integration/            # End-to-end flow tests
@@ -139,6 +143,7 @@ interface TestConfig {
 interface TestResult {
     targetName: string;         // Display name of the test target
     pluginId: string;           // Matches TestPlugin.id
+    category: 'streaming' | 'cdn' | 'manufactured';
     status: 'success' | 'error' | 'timeout';
     downloadSpeedMbps: number | null;  // Null on error/timeout
     durationMs: number;         // Total test duration
@@ -158,76 +163,36 @@ interface TestResult {
 
 ### Adding a New Test Target
 
-Create a new file in `src/plugins/`. The plugin must self-register via
-`registerPlugin()`. Here is a minimal example:
+Create a new file in `src/plugins/`. Use the shared helpers from
+`plugin-runner.js` — the `createBuildResult` factory and a run loop
+factory handle all the boilerplate:
 
 ```javascript
 // src/plugins/example-cdn.js
 import { registerPlugin } from '../lib/plugin-registry.js';
+import {
+    createBuildResult, createUrlBasedRunLoop, downloadFullFile,
+} from '../lib/plugin-runner.js';
 
-const SAMPLE_DURATION_MS = 10000;
-const BITS_PER_BYTE = 8;
-const BYTES_PER_MILLION = 1_000_000;
+const EXAMPLE_URLS = [
+    'https://cdn.example.com/speedtest/file1.bin',
+    'https://cdn.example.com/speedtest/file2.bin',
+];
 
-const EXAMPLE_URL = 'https://cdn.example.com/speedtest/10mb.bin';
+const buildResult = createBuildResult({
+    pluginId: 'example-cdn',
+    targetName: 'Example CDN',
+    category: 'cdn',
+});
 
 const examplePlugin = {
     id: 'example-cdn',
     name: 'Example CDN',
     description: 'Download speed from Example CDN',
     category: 'cdn',
-
-    async run(config) {
-        const startTime = performance.now();
-        const sampleDuration = config.sampleDurationMs || SAMPLE_DURATION_MS;
-        const timeoutMs = config.timeoutMs || 30000;
-        let totalBytes = 0;
-
-        try {
-            while (performance.now() - startTime < sampleDuration) {
-                if (performance.now() - startTime > timeoutMs) break;
-
-                const url = `${EXAMPLE_URL}?t=${Date.now()}`;
-                const t0 = performance.now();
-                const response = await fetch(url, { cache: 'no-store' });
-                await response.blob();
-                const dur = performance.now() - t0;
-
-                // Use Resource Timing for accurate byte counts
-                const entries = performance.getEntriesByName(url);
-                const bytes = entries.length > 0
-                    ? (entries[entries.length - 1].transferSize || 0)
-                    : 0;
-                totalBytes += bytes;
-            }
-
-            const durationMs = Math.round(performance.now() - startTime);
-            const bps = totalBytes / (durationMs / 1000);
-            const speedMbps = (bps * BITS_PER_BYTE) / BYTES_PER_MILLION;
-
-            return {
-                targetName: 'Example CDN',
-                pluginId: 'example-cdn',
-                status: 'success',
-                downloadSpeedMbps: speedMbps,
-                durationMs,
-                bytesTransferred: totalBytes,
-                errorMessage: null,
-                timestamp: new Date().toISOString(),
-            };
-        } catch (error) {
-            return {
-                targetName: 'Example CDN',
-                pluginId: 'example-cdn',
-                status: 'error',
-                downloadSpeedMbps: null,
-                durationMs: Math.round(performance.now() - startTime),
-                bytesTransferred: totalBytes,
-                errorMessage: error.message || 'Unknown error',
-                timestamp: new Date().toISOString(),
-            };
-        }
-    },
+    run: createUrlBasedRunLoop({
+        buildResult, urls: EXAMPLE_URLS, downloadFn: downloadFullFile,
+    }),
 };
 
 registerPlugin(examplePlugin);
@@ -241,22 +206,26 @@ import './plugins/example-cdn.js';
 ```
 
 That is it. Your new target will appear in the next test run with no other
-changes required.
+changes required. For Range-request-based plugins (like CloudFront or GitHub),
+use `createRangeBasedRunLoop` with `downloadRange` and `adaptRangeChunkSize`
+instead.
 
 ## Test Targets (Included)
 
 | Plugin | ID | Category | Test Source |
 |--------|----|----------|-------------|
 | Cloudflare | `cloudflare` | cdn | `speed.cloudflare.com` CDN (used as baseline) |
-| Fast.com | `fast-com` | streaming | Netflix Open Connect CDN |
-| Google CDN | `google-cdn` | manufactured | `gstatic.com` image resources |
-| jsDelivr CDN | `jsdelivr` | cdn | `cdn.jsdelivr.net` JS libraries |
+| AWS CloudFront | `cloudfront` | cdn | `d1.awsstatic.com` whitepaper (Range requests) |
+| YouTube CDN | `youtube` | streaming | `fonts.gstatic.com` large CJK fonts |
+| GitHub (Fastly) | `github` | cdn | `raw.githubusercontent.com` test asset (Range requests) |
+| jsDelivr CDN | `jsdelivr` | cdn | `cdn.jsdelivr.net` npm packages |
+| Bunny CDN | `bunny-cdn` | cdn | `fonts.bunny.net` large CJK fonts |
 
 ## Testing and Linting
 
 ```bash
 # Run all tests
-npm test                # vitest run (82 tests across 6 files)
+npm test                # vitest run (168 tests across 8 files)
 
 # Watch mode (re-runs on file changes)
 npm run test:watch
@@ -275,9 +244,10 @@ npm run lint:fix
 
 | Directory | Count | Purpose |
 |-----------|-------|---------|
-| `tests/unit/` | 62 tests | Isolated tests for `lib/` modules |
+| `tests/unit/` | 137 tests | Isolated tests for `lib/` modules and plugins |
 | `tests/contract/` | 16 tests | Enforces `TestPlugin` interface contract |
-| `tests/integration/` | 4 tests | End-to-end: runner -> analyzer -> presenter |
+| `tests/integration/` | 4 tests | End-to-end: runner → analyzer → presenter |
+| `tests/helpers/` | — | Test utilities and fixtures |
 
 ## Deployment
 

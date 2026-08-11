@@ -124,6 +124,7 @@ describe('Full Test Flow (Integration)', () => {
                 bytesTransferred: 1024,
                 errorMessage: null,
                 timestamp: new Date().toISOString(),
+                category: 'cdn',
             }],
             baselinePluginId: 'test',
             discrepancies: [{
@@ -163,6 +164,7 @@ describe('Full Test Flow (Integration)', () => {
                 bytesTransferred: 0,
                 errorMessage: CORS_ERROR,
                 timestamp: new Date().toISOString(),
+                category: 'cdn',
             }],
             baselinePluginId: null,
             discrepancies: [],

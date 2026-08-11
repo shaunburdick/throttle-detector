@@ -13,16 +13,14 @@
  */
 
 import { registerPlugin } from '../lib/plugin-registry.js';
-import { bytesToMbps, trimmedMean } from '../lib/utils.js';
+import {
+    createBuildResult, createUrlBasedRunLoop, downloadFullFile,
+} from '../lib/plugin-runner.js';
 
 /**
  * Large CJK font files (TTF) from fonts.gstatic.com.
- * Each is 5–10 MB and includes CORS + Timing-Allow-Origin headers.
- *
- * Using multiple fonts spreads cache pressure across different CDN
- * edge locations and prevents repeated cache hits from masking real
- * network throughput. Font URLs are sourced from the Google Fonts
- * CSS API (fonts.googleapis.com/css2) to ensure valid, stable URLs.
+ * Each is 5–10 MB and supports CORS + Timing-Allow-Origin. Multiple
+ * URLs spread cache pressure across different CDN edge locations.
  */
 const GSTATIC_FONT_URLS = [
     'https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf',
@@ -33,150 +31,20 @@ const GSTATIC_FONT_URLS = [
     'https://fonts.gstatic.com/s/notosanskr/v39/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzg01eLQ.ttf',
 ];
 
-const SAMPLE_DURATION_MS = 10000;
-const WARMUP_DURATION_MS = 1000;
-const DEFAULT_TIMEOUT_MS = 30000;
-const FETCH_TIMEOUT_MS = 15000;
-
-// === Helpers (function declarations hoist) ===
-
-/** @returns {{bytes: number, speedMbps: number, durationMs: number}} */
-function zeroSample() {
-    return { bytes: 0, speedMbps: 0, durationMs: 0 };
-}
-
-/**
- * Returns actual transfer bytes from the Resource Timing API.
- *
- * @param {string} urlPrefix
- * @param {number} fallback
- * @returns {number}
- */
-function getTransferBytes(urlPrefix, fallback) {
-    const entries = performance.getEntriesByType('resource');
-    const prefix = urlPrefix.split('?')[0];
-    for (const entry of entries) {
-        if (entry.name.startsWith(prefix)) {
-            if (entry.transferSize > 0) {
-                return entry.transferSize;
-            }
-            if (entry.encodedBodySize > 0) {
-                return entry.encodedBodySize;
-            }
-            return fallback;
-        }
-    }
-    return fallback;
-}
-
-/**
- * Downloads a font file from Google Fonts CDN and measures speed.
- *
- * @param {string} url
- * @param {number} timeoutMs
- * @returns {Promise<{bytes: number, speedMbps: number, durationMs: number}>}
- */
-async function downloadMeasure(url, timeoutMs) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-        () => controller.abort(),
-        Math.min(timeoutMs, FETCH_TIMEOUT_MS)
-    );
-    try {
-        const cacheBust = `${url}?_=${Date.now()}`;
-        const t0 = performance.now();
-        const resp = await fetch(cacheBust, {
-            signal: controller.signal,
-            cache: 'no-store',
-        });
-        if (!resp.ok) {
-            return zeroSample();
-        }
-        await resp.blob();
-        const dur = performance.now() - t0;
-        const bytes = getTransferBytes(cacheBust, 0);
-        if (bytes === 0) {
-            return zeroSample();
-        }
-        return { bytes, speedMbps: bytesToMbps(bytes, dur), durationMs: dur };
-    } catch {
-        return zeroSample();
-    } finally {
-        clearTimeout(timeoutId);
-    }
-}
-
-/**
- * @param {{ status: string, speedMbps: number|null, durationMs: number,
- *   bytesTransferred: number, errorMessage: string|null }} opts
- * @returns {import('../lib/types.js').TestResult}
- */
-function buildResult({ status, speedMbps, durationMs, bytesTransferred,
-    errorMessage }) {
-    return {
-        targetName: 'YouTube CDN',
-        pluginId: 'youtube',
-        status,
-        downloadSpeedMbps: speedMbps,
-        durationMs,
-        bytesTransferred,
-        errorMessage,
-        timestamp: new Date().toISOString(),
-    };
-}
-
-// === Plugin ===
+const buildResult = createBuildResult({
+    pluginId: 'youtube',
+    targetName: 'YouTube CDN',
+    category: 'streaming',
+});
 
 const youtubePlugin = {
     id: 'youtube',
     name: 'YouTube CDN',
     description: 'Download speed from Google CDN (fonts.gstatic.com large CJK fonts)',
     category: 'streaming',
-
-    async run(config) {
-        const startTime = performance.now();
-        const sampleDuration = config.sampleDurationMs || SAMPLE_DURATION_MS;
-        const timeoutMs = config.timeoutMs || DEFAULT_TIMEOUT_MS;
-        const samples = [];
-        let totalBytes = 0;
-
-        try {
-            let idx = 0;
-            while (performance.now() - startTime < sampleDuration) {
-                if (performance.now() - startTime > timeoutMs) {
-                    break;
-                }
-                const url = GSTATIC_FONT_URLS[
-                    idx % GSTATIC_FONT_URLS.length
-                ];
-                const sample = await downloadMeasure(url, timeoutMs);
-                totalBytes += sample.bytes;
-                if (sample.speedMbps > 0
-                    && performance.now() - startTime > WARMUP_DURATION_MS) {
-                    samples.push(sample.speedMbps);
-                }
-                idx++;
-            }
-
-            const speed = trimmedMean(samples);
-            return buildResult({
-                status: speed !== null ? 'success' : 'error',
-                speedMbps: speed,
-                durationMs: Math.round(performance.now() - startTime),
-                bytesTransferred: totalBytes,
-                errorMessage: speed === null
-                    ? 'Not enough valid samples collected' : null,
-            });
-        } catch (error) {
-            return buildResult({
-                status: 'error',
-                speedMbps: null,
-                durationMs: Math.round(performance.now() - startTime),
-                bytesTransferred: totalBytes,
-                errorMessage: error.message || 'Unknown error',
-            });
-        }
-    },
+    run: createUrlBasedRunLoop({
+        buildResult, urls: GSTATIC_FONT_URLS, downloadFn: downloadFullFile,
+    }),
 };
 
 registerPlugin(youtubePlugin);

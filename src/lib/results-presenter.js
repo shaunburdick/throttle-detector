@@ -5,24 +5,18 @@
  */
 
 import { formatMbps, formatDuration } from './utils.js';
+import { escapeHtml } from './dom-utils.js';
 
-const KIB = 1024;
-const MIB = 1024 * 1024;
 const ROW_INCONCLUSIVE = 'row-inconclusive';
 const BADGE_NEUTRAL = 'badge-neutral';
 const BADGE_ERROR = 'badge-error';
 
 // === HTML helpers (function declarations hoist) ===
 
-/** @param {string} str @returns {string} */
-function escape(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
-
 /** @param {number} bytes @returns {string} */
 function formatBytes(bytes) {
+    const KIB = 1024;
+    const MIB = 1024 * 1024;
     if (bytes < KIB) {
         return `${bytes} B`;
     }
@@ -115,6 +109,20 @@ function getVerdictExplanation(verdict) {
     return EXPLANATIONS[verdict.level] || 'Run a test to see results.';
 }
 
+/**
+ * Formats the deviation percentage string for a table cell.
+ *
+ * @param {import('./types.js').Discrepancy|undefined} disc
+ * @returns {string}
+ */
+function formatDeviation(disc) {
+    if (!disc || disc.percentageDeviation === null) {
+        return '\u2014';
+    }
+    return `${(disc.percentageDeviation > 0 ? '+' : '')
+        + disc.percentageDeviation.toFixed(1)}%`;
+}
+
 // === Table / card builders ===
 
 /**
@@ -132,21 +140,20 @@ function buildTable(run) {
         );
         const speed = result.status === 'success'
             ? formatMbps(result.downloadSpeedMbps) : '';
-        const deviation = disc && disc.percentageDeviation !== null
-            ? `${(disc.percentageDeviation > 0 ? '+' : '')
-              + disc.percentageDeviation.toFixed(1)  }%`
-            : '\u2014';
+        const deviation = formatDeviation(disc);
         const badge = getStatusBadge({ result, isBaseline, disc });
         const badgeCls = isBaseline ? 'badge-neutral' : getBadgeClass(disc, result.status);
+        const rowClass = isBaseline ? 'row-baseline' : getRowClass(disc, result.status);
 
-        rows += `<tr class="${getRowClass(disc, result.status)}">
-            <td>${escape(result.targetName)}</td>
+        rows += `<tr class="${rowClass}">
+            <td>${escapeHtml(result.targetName)}</td>
+            <td><span class="badge badge-neutral" style="font-size:0.75rem">${escapeHtml(result.category)}</span></td>
             <td>${speed || '\u2014'}</td>
             <td>${formatDuration(result.durationMs)}</td>
             <td>${result.bytesTransferred > 0 ? formatBytes(result.bytesTransferred) : '\u2014'}</td>
             <td aria-label="${deviation}">${deviation}</td>
             <td><span class="badge ${badgeCls}">${badge}</span></td>
-            ${result.errorMessage ? `<td>${escape(result.errorMessage)}</td>` : '<td>\u2014</td>'}
+            ${result.errorMessage ? `<td>${escapeHtml(result.errorMessage)}</td>` : '<td>\u2014</td>'}
         </tr>`;
     }
 
@@ -154,7 +161,8 @@ function buildTable(run) {
         <table class="results-table" aria-label="Speed test results comparison">
             <caption id="results-heading">Speed Test Results</caption>
             <thead><tr>
-                <th scope="col">Target</th><th scope="col">Speed</th>
+                <th scope="col">Target</th><th scope="col">Category</th>
+                <th scope="col">Speed</th>
                 <th scope="col">Duration</th><th scope="col">Data Used</th>
                 <th scope="col">Deviation</th><th scope="col">Status</th>
                 <th scope="col">Details</th>
@@ -177,8 +185,8 @@ function buildVerdictCard(verdict) {
     return `<div class="verdict-card verdict-card--${verdict.indicator}" role="status" aria-live="polite">
         <span class="verdict-indicator" aria-hidden="true">${icon}</span>
         <div class="verdict-text">
-            <h2>${escape(verdict.message)}</h2>
-            <p>${escape(explanation)}</p>
+            <h2>${escapeHtml(verdict.message)}</h2>
+            <p>${escapeHtml(explanation)}</p>
         </div></div>`;
 }
 
@@ -187,7 +195,7 @@ function buildDetails(run) {
     if (!run.warnings || run.warnings.length === 0) {
         return '';
     }
-    const items = run.warnings.map((warning) => `<li>${escape(warning)}</li>`).join('');
+    const items = run.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('');
     return `<details class="test-details fade-in">
         <summary>Warnings (${run.warnings.length})</summary><ul>${items}</ul></details>`;
 }

@@ -42,6 +42,7 @@
  * @property {number} bytesTransferred - Total bytes downloaded.
  * @property {string|null} errorMessage - Error description, null on success.
  * @property {string} timestamp - ISO 8601 timestamp.
+ * @property {'streaming'|'cdn'|'manufactured'} category - Test category.
  */
 
 /**
@@ -92,7 +93,10 @@
  * @property {number} errorCount - Failed measurements.
  * @property {string} summary - One-line summary.
  * @property {Verdict} verdict - Cached verdict.
- * @property {TestResult[]} results - Full results.
+ * @property {TestResult[]} results - Full results (undefined if trimmed).
+ * @property {Discrepancy[]} [discrepancies] - Cached discrepancies (may be absent in legacy entries).
+ * @property {string|null} [baselinePluginId] - Cached baseline plugin ID.
+ * @property {boolean} [stripped] - True if results were trimmed to fit storage.
  */
 
 export {};

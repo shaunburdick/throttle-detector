@@ -1,85 +1,72 @@
 /**
  * Cloudflare baseline speed test plugin.
  *
+ * The baseline measurement — Cloudflare's speed test CDN serves raw
+ * bytes with index-based chunk sizing to accurately measure connections
+ * from slow DSL to multi-gigabit fiber.
+ *
+ * Uses the shared `createChunkBasedRunLoop` factory from plugin-runner.
+ *
  * @module plugins/cloudflare
  */
 
 import { registerPlugin } from '../lib/plugin-registry.js';
-import { bytesToMbps, trimmedMean } from '../lib/utils.js';
+import { bytesToMbps } from '../lib/utils.js';
+import {
+    createBuildResult, createChunkBasedRunLoop, withFetchTimeout,
+    zeroSample, resolveByteCount,
+} from '../lib/plugin-runner.js';
 
 const CLOUDFLARE_URL = 'https://speed.cloudflare.com/__down';
-const SAMPLE_DURATION_MS = 10000;
-const WARMUP_DURATION_MS = 1000;
 const MIN_SAMPLE_DURATION_MS = 200;
 const SLOW_SAMPLE_THRESHOLD_MS = 1000;
-const DEFAULT_TIMEOUT_MS = 30000;
 const KIB = 1024;
 const MIB = 1024 * 1024;
-const SMALL_CHUNK = 256 * KIB;
-const MED_CHUNK = 512 * KIB;
-const LARGE_CHUNK = 25 * MIB;
 
-// === Helpers (function declarations hoist) ===
+/** Pre-allocated chunk size progression for Cloudflare's index-based sizing */
+const CHUNK_256K = 256 * KIB;
+const CHUNK_512K = 512 * KIB;
+const CHUNK_25M = 25 * MIB;
+const CHUNK_SIZES = Object.freeze([
+    CHUNK_256K, CHUNK_512K, 1 * MIB, 2 * MIB, 5 * MIB, 10 * MIB, CHUNK_25M,
+]);
 
-function chunkSizes() {
-    return [
-        SMALL_CHUNK, MED_CHUNK, 1 * MIB, 2 * MIB, 5 * MIB, 10 * MIB, LARGE_CHUNK,
-    ];
-}
+// === Download Helper ===
 
 /**
+ * Downloads from Cloudflare's speed test endpoint and measures throughput.
+ *
+ * Uses `resolveByteCount` (Resource Timing API) for accurate byte counts,
+ * falling back to `expectedBytes` when timing data is unavailable.
+ *
  * @param {{ url: string, expectedBytes: number, timeoutMs: number }} opts
  * @returns {Promise<{bytes: number, speedMbps: number, durationMs: number}>}
  */
 async function downloadAndMeasure({ url, expectedBytes, timeoutMs }) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    try {
+    return withFetchTimeout(timeoutMs, async (signal) => {
         const fetchStart = performance.now();
-        const response = await fetch(url, {
-            signal: controller.signal, cache: 'no-store',
-        });
+        const response = await fetch(url, { signal, cache: 'no-store' });
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
         await response.blob();
         const durationMs = performance.now() - fetchStart;
-        let bytes = expectedBytes;
-        const entries = performance.getEntriesByName(url);
-        if (entries.length > 0) {
-            const entry = entries[entries.length - 1];
-            if (entry.transferSize > 0) {
-                bytes = entry.transferSize;
-            } else if (entry.encodedBodySize > 0) {
-                bytes = entry.encodedBodySize;
-            }
+        const bytes = resolveByteCount(url, expectedBytes);
+        if (bytes === 0) {
+            return zeroSample();
         }
         const speedMbps = bytesToMbps(bytes, durationMs);
         return { bytes, speedMbps, durationMs };
-    } finally {
-        clearTimeout(timeoutId);
-    }
+    });
 }
 
-const TARGET_NAME = 'Cloudflare (Baseline)';
+// === Chunk Sizing Strategy ===
 
 /**
- * @param {{ status: string, speedMbps: number|null, durationMs: number,
- *   bytesTransferred: number, errorMessage: string|null }} opts
- * @returns {import('../lib/types.js').TestResult}
- */
-function buildResult({ status, speedMbps, durationMs, bytesTransferred,
-    errorMessage }) {
-    return {
-        targetName: TARGET_NAME, pluginId: 'cloudflare',
-        status, downloadSpeedMbps: speedMbps,
-        durationMs, bytesTransferred, errorMessage,
-        timestamp: new Date().toISOString(),
-    };
-}
-
-/**
- * Determines next chunk size based on sample timing.
+ * Determines next chunk size index based on sample timing.
+ *
+ * Slower samples → decrease index (smaller chunks).
+ * Faster samples → increase index (larger chunks).
  *
  * @param {number} durationMs
  * @param {number} currentIndex
@@ -96,63 +83,39 @@ function adjustChunkIndex(durationMs, currentIndex, maxIndex) {
     return currentIndex;
 }
 
+// === Plugin Definition ===
+
+const TARGET_NAME = 'Cloudflare (Baseline)';
+
+const buildResult = createBuildResult({
+    pluginId: 'cloudflare',
+    targetName: TARGET_NAME,
+    category: 'cdn',
+});
+
+/**
+ * Builds a cache-busted Cloudflare speed test URL for the given chunk size.
+ *
+ * @param {number} sz - Chunk size in bytes
+ * @returns {string}
+ */
+function buildUrl(sz) {
+    return `${CLOUDFLARE_URL}?bytes=${sz}&ts=${Date.now()}`;
+}
+
 const cloudflarePlugin = {
     id: 'cloudflare',
     name: TARGET_NAME,
     description: 'Download speed from Cloudflare speed test endpoint',
     category: 'cdn',
-
-    async run(config) {
-        const startTime = performance.now();
-        const sampleDuration = config.sampleDurationMs || SAMPLE_DURATION_MS;
-        const timeoutMs = config.timeoutMs || DEFAULT_TIMEOUT_MS;
-        let totalBytes = 0;
-        const samples = [];
-
-        try {
-            const sizes = chunkSizes();
-            let chunkIndex = 0;
-
-            while (performance.now() - startTime < sampleDuration) {
-                if (performance.now() - startTime > timeoutMs) {
-                    break;
-                }
-                const sz = sizes[Math.min(chunkIndex, sizes.length - 1)];
-                const url = `${CLOUDFLARE_URL}?bytes=${sz}&ts=${Date.now()}`;
-                const sample = await downloadAndMeasure({
-                    url, expectedBytes: sz, timeoutMs,
-                });
-                totalBytes += sample.bytes;
-                if (sample.speedMbps > 0
-                    && performance.now() - startTime > WARMUP_DURATION_MS) {
-                    samples.push(sample.speedMbps);
-                }
-                chunkIndex = adjustChunkIndex(
-                    sample.durationMs, chunkIndex,
-                    sizes.length - 1
-                );
-            }
-
-            const speed = trimmedMean(samples);
-            const errorMessage = speed === null
-                ? 'Not enough valid samples collected' : null;
-            return buildResult({
-                status: speed !== null ? 'success' : 'error',
-                speedMbps: speed,
-                durationMs: Math.round(performance.now() - startTime),
-                bytesTransferred: totalBytes,
-                errorMessage,
-            });
-        } catch (error) {
-            return buildResult({
-                status: 'error', speedMbps: null,
-                durationMs: Math.round(performance.now() - startTime),
-                bytesTransferred: totalBytes,
-                errorMessage: error.message || 'Unknown error',
-            });
-        }
-    },
+    run: createChunkBasedRunLoop({
+        buildResult,
+        sizes: CHUNK_SIZES,
+        buildUrl,
+        nextChunk: adjustChunkIndex,
+        downloadFn: downloadAndMeasure,
+    }),
 };
 
 registerPlugin(cloudflarePlugin);
-export { cloudflarePlugin };
+export { cloudflarePlugin, CHUNK_SIZES, adjustChunkIndex };

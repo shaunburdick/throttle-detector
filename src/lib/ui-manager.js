@@ -5,6 +5,8 @@
  */
 
 import { formatTimestamp } from './utils.js';
+import { presentHtml } from './results-presenter.js';
+import { escapeHtml } from './dom-utils.js';
 
 // ===== State =====
 
@@ -17,19 +19,12 @@ let onHistoryDeleteAllCb = null;
 // ===== Helpers =====
 
 /** @param {string} str @returns {string} */
-function esc(str) {
-    const element = document.createElement('div');
-    element.textContent = str;
-    return element.innerHTML;
-}
-
-/** @param {string} str @returns {string} */
 function escAttr(str) {
     return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /** @param {string} msg */
-function announce(msg) {
+export function announce(msg) {
     const live = document.getElementById('status-live');
     if (!live) {
         return;
@@ -55,6 +50,26 @@ const HISTORY_AREA_ID = 'history-area';
 const STATUS_LIVE_ID = 'status-live';
 const RUN_BTN_ID = 'run-test-btn';
 
+/**
+ * Builds error state HTML for consistent rendering across the app.
+ *
+ * @param {object} opts
+ * @param {string} opts.icon - Unicode emoji for the error icon
+ * @param {string} opts.title - Heading text
+ * @param {string} opts.message - Description paragraph
+ * @param {string[]} [opts.items] - Optional list of detail items
+ * @returns {string}
+ */
+export function buildErrorHtml({ icon, title, message, items }) {
+    const itemList = items ? items.map((item) => `<li>${escapeHtml(item)}</li>`).join('') : '';
+    const listHtml = items && items.length > 0
+        ? `<ul style="text-align:left;max-width:400px;margin:0 auto">${itemList}</ul>`
+        : '';
+    const iconSpan = `<span class="error-state-icon" aria-hidden="true">${icon}</span>`;
+    const body = `${iconSpan}<h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p>${listHtml}`;
+    return `<div class="error-state" role="alert">${body}</div>`;
+}
+
 // ===== Render =====
 
 /** @param {string[]} warnings */
@@ -69,7 +84,7 @@ function render(warnings) {
     for (const warning of warnings) {
         html += '<div class="warning-banner" role="alert">'
             + '<span aria-hidden="true">\u26A0\uFE0F</span> '
-            + `${esc(warning)}</div>`;
+            + `${escapeHtml(warning)}</div>`;
     }
 
     const running = currentState === 'running';
@@ -131,7 +146,8 @@ export function setRunning(plugins) {
             + ` data-plugin-id="${escAttr(plugin.id)}">`
             + '<span class="test-status-icon test-status-icon--queued"'
             + ' aria-hidden="true">\u23F3</span>'
-            + `<span>${esc(plugin.name)}</span>`
+            + `<span>${escapeHtml(plugin.name)}</span>`
+            + `<span class="badge badge-neutral" style="font-size:0.75rem">${escapeHtml(plugin.category)}</span>`
             + '<span class="test-status-label">Queued</span></li>';
     }
 
@@ -178,7 +194,7 @@ export function markPluginRunning(pluginId) {
     }
 }
 
-const PERCENTAGE_MULTIPLIER = 100;
+const PERCENT_SCALE = 100;
 
 /** @type {number} Tracks last announced completion count for debouncing */
 let lastAnnouncedDone = 0;
@@ -192,7 +208,7 @@ const PROGRESS_ANNOUNCE_THROTTLE_MS = 1000;
 /** @param {number} done @param {number} total */
 export function updateProgress(done, total) {
     const pct = total > 0
-        ? Math.round((done / total) * PERCENTAGE_MULTIPLIER) : 0;
+        ? Math.round((done / total) * PERCENT_SCALE) : 0;
     const bar = document.querySelector('.progress-bar');
     const txt = document.querySelector('.progress-text');
     const fill = document.querySelector('.progress-bar-fill');
@@ -237,7 +253,7 @@ export function updatePluginStatus(pluginId, ok) {
 }
 
 /** @param {import('./types.js').TestRun} run */
-export async function setResults(run) {
+export function setResults(run) {
     const allFailed = run.results.every((res) => res.status !== 'success');
     currentState = allFailed ? 'error-full' : 'complete';
     updateBtn(false);
@@ -247,12 +263,7 @@ export async function setResults(run) {
         return;
     }
 
-    try {
-        const { presentHtml } = await import('./results-presenter.js');
-        area.innerHTML = presentHtml(run);
-    } catch {
-        return;
-    }
+    area.innerHTML = presentHtml(run);
 
     // Move focus to results heading after content replacement
     const heading = area.querySelector('#results-heading');
@@ -278,9 +289,42 @@ function renderEmptyHistory(area) {
 }
 
 /**
+ * Creates a focus-trap keydown handler for inline confirm dialogs.
+ *
+ * Cycles focus between the Yes and Cancel buttons on Tab/Shift+Tab.
+ * Calls `onEscape` when Escape is pressed.
+ *
+ * @param {HTMLButtonElement} yesBtn
+ * @param {HTMLButtonElement} cancelBtn
+ * @param {() => void} onEscape
+ * @returns {(event: KeyboardEvent) => void}
+ */
+function createConfirmFocusTrap(yesBtn, cancelBtn, onEscape) {
+    return function onKeydown(event) {
+        if (event.key === 'Escape') {
+            event.stopPropagation();
+            onEscape();
+            return;
+        }
+        if (event.key === 'Tab') {
+            const buttons = [yesBtn, cancelBtn];
+            const currentIndex = buttons.indexOf(document.activeElement);
+            let nextIndex;
+            if (event.shiftKey) {
+                nextIndex = currentIndex <= 0 ? buttons.length - 1 : currentIndex - 1;
+            } else {
+                nextIndex = currentIndex >= buttons.length - 1 ? 0 : currentIndex + 1;
+            }
+            event.preventDefault();
+            buttons[nextIndex].focus();
+        }
+    };
+}
+
+/**
  * Replaces the trigger element with an inline confirmation UI.
  * Calls onConfirm when "Yes" is clicked; restores the original element
- * when "Cancel" is clicked or Escape is pressed.
+ * when "Cancel" is clicked, Escape is pressed, or user clicks outside.
  *
  * @param {HTMLElement} triggerEl - Element to replace with confirmation
  * @param {string} message - Confirmation message text
@@ -309,7 +353,14 @@ function showInlineConfirm(triggerEl, message, onConfirm) {
     wrapper.appendChild(yesBtn);
     wrapper.appendChild(cancelBtn);
 
+    let cancelled = false;
+
+    /** Restores the original element and returns focus to it. */
     function restore() {
+        if (cancelled) {
+            return;
+        }
+        cancelled = true;
         if (!triggerEl.parentNode) {
             wrapper.replaceWith(triggerEl);
         }
@@ -317,20 +368,34 @@ function showInlineConfirm(triggerEl, message, onConfirm) {
         announce('Deletion cancelled.');
     }
 
-    function onKeydown(event) {
-        if (event.key !== 'Escape') {
+    /**
+     * Click-outside-to-dismiss: if user clicks anywhere outside the
+     * inline confirm wrapper, restore the original element.
+     *
+     * Self-cleans if the wrapper is detached or cancelled, removing
+     * itself from the document listener list.
+     *
+     * @param {MouseEvent} event
+     */
+    function onDocumentClick(event) {
+        if (cancelled || !wrapper.isConnected) {
+            document.removeEventListener('click', onDocumentClick);
             return;
         }
-        event.stopPropagation();
-        restore();
+        if (!wrapper.contains(event.target)) {
+            restore();
+        }
     }
 
     yesBtn.addEventListener('click', () => {
+        cancelled = true;
+        document.removeEventListener('click', onDocumentClick);
         onConfirm();
     });
 
     cancelBtn.addEventListener('click', restore);
-    wrapper.addEventListener('keydown', onKeydown);
+    wrapper.addEventListener('keydown', createConfirmFocusTrap(yesBtn, cancelBtn, restore));
+    document.addEventListener('click', onDocumentClick);
 
     triggerEl.replaceWith(wrapper);
     cancelBtn.focus();
@@ -364,7 +429,7 @@ function buildHistoryHtml(entries, count) {
             + ` aria-label="Test run from ${formatTimestamp(entry.timestamp)}"`
             + ` data-run-id="${escAttr(entry.runId)}">`
             + '<span class="history-entry-summary">'
-            + `${esc(entry.summary)}</span>`
+            + `${escapeHtml(entry.summary)}</span>`
             + '<span class="history-entry-timestamp">'
             + `${formatTimestamp(entry.timestamp)}</span></button>`
             + `${deleteBtnHtml}</li>`;
@@ -444,12 +509,11 @@ export function showErrorState(reasons) {
         return;
     }
 
-    const items = reasons.map((reason) => `<li>${esc(reason)}</li>`).join('');
-    area.innerHTML = '<div class="error-state" role="alert">'
-        + '<span class="error-state-icon" aria-hidden="true">\u274C</span>'
-        + '<h2>Unable to Determine</h2>'
-        + '<p>Tests could not complete.</p>'
-        + '<ul style="text-align:left;max-width:400px;margin:0 auto">'
-        + `${items}</ul></div>`;
+    area.innerHTML = buildErrorHtml({
+        icon: '\u274C',
+        title: 'Unable to Determine',
+        message: 'Tests could not complete.',
+        items: reasons,
+    });
     announce('Tests failed. Unable to determine throttling.');
 }
