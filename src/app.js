@@ -20,11 +20,14 @@ import { bootstrapJsonView } from './lib/json-viewer.js';
 import { save, loadAll, deleteRun, deleteAll } from './lib/history-manager.js';
 import {
     init, setRunning, updateProgress, updatePluginStatus,
-    setResults, renderHistory, showErrorState, markPluginRunning,
-    buildErrorHtml, announce,
+    setResults, resetResults, renderHistory, showErrorState,
+    markPluginRunning, buildErrorHtml, announce,
 } from './lib/ui-manager.js';
 
 const MAIN_ID = 'main-content';
+
+/** @type {string|null} Tracks the currently displayed result's runId */
+let lastDisplayedRunId = null;
 
 // ===== Helpers =====
 
@@ -76,6 +79,7 @@ function finalizeTestRun(results, extraWarnings) {
         warnings: extraWarnings,
     };
     setResults(testRun);
+    lastDisplayedRunId = testRun.runId;
     return testRun;
 }
 
@@ -120,6 +124,7 @@ async function loadHistoryEntry(runId) {
                 warnings: [],
             };
             setResults(testRun);
+            lastDisplayedRunId = testRun.runId;
             return;
         }
 
@@ -135,6 +140,7 @@ async function loadHistoryEntry(runId) {
                 warnings: [],
             };
             setResults(testRun);
+            lastDisplayedRunId = testRun.runId;
             return;
         }
 
@@ -149,6 +155,7 @@ async function loadHistoryEntry(runId) {
             discrepancies, verdict, warnings: [],
         };
         setResults(testRun);
+        lastDisplayedRunId = testRun.runId;
     } catch {
         // History load failed — non-critical; showing current state only
         void 0;
@@ -164,6 +171,14 @@ async function deleteHistoryEntry(runId) {
     try {
         deleteRun(runId);
         renderHistory(loadAll());
+
+        // If we just deleted the currently displayed result,
+        // reset the results area to the initial state
+        if (lastDisplayedRunId === runId) {
+            resetResults();
+            lastDisplayedRunId = null;
+        }
+
         announce('Test run deleted');
     } catch {
         void 0;
@@ -177,6 +192,11 @@ async function deleteAllHistory() {
     try {
         const deletedCount = deleteAll();
         renderHistory(loadAll());
+
+        // All entries gone — always reset results to initial state
+        resetResults();
+        lastDisplayedRunId = null;
+
         announce(`${deletedCount} test runs deleted`);
     } catch {
         void 0;

@@ -312,6 +312,24 @@ export function renderHistory(entries) {
     });
 }
 
+/**
+ * Resets the results area to the initial state, showing only the
+ * plugin checklist. Called when the currently displayed result is
+ * deleted from history so stale data isn't shown.
+ */
+export function resetResults() {
+    currentState = 'initial';
+
+    const area = document.getElementById(RESULTS_AREA_ID);
+    if (!area) {
+        return;
+    }
+
+    const plugins = lastPlugins.length > 0 ? lastPlugins : getPlugins();
+    const checklistHtml = presentPluginChecklist(plugins, false);
+    area.innerHTML = checklistHtml;
+}
+
 /** @param {string[]} reasons */
 export function showErrorState(reasons) {
     currentState = 'error-full';
