@@ -33,7 +33,7 @@ describe('Full Test Flow (Integration)', () => {
             ),
         ];
 
-        const results = await runAll(plugins, DEFAULT_CONFIG);
+        const results = await runAll({ plugins, config: DEFAULT_CONFIG });
         expect(results).toHaveLength(4);
 
         const { baseline, discrepancies, verdict } = analyzeResults(results);
@@ -81,7 +81,7 @@ describe('Full Test Flow (Integration)', () => {
             ),
         ];
 
-        const results = await runAll(plugins, DEFAULT_CONFIG);
+        const results = await runAll({ plugins, config: DEFAULT_CONFIG });
         expect(results).toHaveLength(3);
 
         const { verdict } = analyzeResults(results);

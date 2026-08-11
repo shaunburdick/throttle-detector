@@ -68,24 +68,31 @@ async function runPluginWithTimeout(plugin, config) {
 }
 
 /**
+ * Options for the runAll orchestrator.
+ *
+ * @typedef {Object} RunAllOptions
+ * @property {import('./types.js').TestPlugin[]} plugins
+ * @property {import('./types.js').TestConfig} config
+ * @property {function({ done: number, total: number, pluginId: string, success: boolean }): void} [onProgress]
+ * @property {function(pluginId: string): void} [onPluginStart]
+ */
+
+/**
  * Runs all plugins sequentially — one at a time on the main thread.
  *
  * Sequential execution eliminates the network contention that caused
  * false-positive throttling signals when plugins competed for bandwidth
  * in parallel Web Workers.
  *
- * @param {import('./types.js').TestPlugin[]} plugins
- * @param {import('./types.js').TestConfig} config
- * @param {function(number, number): void} [onProgress] — Optional callback
- *        invoked after each plugin completes. Receives `(done, total)` where
- *        `done` is the number of completed plugins and `total` is the total
- *        plugin count. Use this to drive incremental progress indicators
- *        during long test runs.
+ * @param {RunAllOptions} options
  * @returns {Promise<import('./types.js').TestResult[]>}
  */
-export async function runAll(plugins, config, onProgress) {
+export async function runAll({ plugins, config, onProgress, onPluginStart }) {
     const results = [];
     for (const plugin of plugins) {
+        if (onPluginStart) {
+            onPluginStart(plugin.id);
+        }
         try {
             const timed = await runPluginWithTimeout(plugin, config);
             results.push(timed);
@@ -93,7 +100,13 @@ export async function runAll(plugins, config, onProgress) {
             results.push(errorResult(plugin, error));
         }
         if (onProgress) {
-            onProgress(results.length, plugins.length);
+            const lastResult = results[results.length - 1];
+            onProgress({
+                done: results.length,
+                total: plugins.length,
+                pluginId: lastResult.pluginId,
+                success: lastResult.status === 'success',
+            });
         }
     }
     return results;

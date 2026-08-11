@@ -18,7 +18,7 @@ import { presentJson } from './lib/results-presenter.js';
 import { generateRunId } from './lib/utils.js';
 import {
     init, setRunning, updateProgress, updatePluginStatus,
-    setResults, renderHistory, showErrorState,
+    setResults, renderHistory, showErrorState, markPluginRunning,
 } from './lib/ui-manager.js';
 
 let historyManager = null;
@@ -189,13 +189,15 @@ async function startTest() {
     const extraWarnings = [];
 
     try {
-        const results = await runAll(plugins, config,
-            (done, total) => {
+        const results = await runAll({
+            plugins,
+            config,
+            onProgress: ({ done, total, pluginId, success }) => {
                 updateProgress(done, total);
-            });
-        for (const result of results) {
-            updatePluginStatus(result.pluginId, result.status === 'success');
-        }
+                updatePluginStatus(pluginId, success);
+            },
+            onPluginStart: (pluginId) => markPluginRunning(pluginId),
+        });
         const testRun = finalizeTestRun(results, extraWarnings);
         await persistAndRefreshHistory(testRun);
     } catch (error) {
