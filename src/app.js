@@ -177,15 +177,40 @@ async function deleteAllHistory() {
 
 // ===== Core Logic =====
 
-/** Runs a speed test using all registered plugins. */
+/** Runs a speed test using selected plugins. */
 async function startTest() {
-    const plugins = getPlugins();
-    if (plugins.length === 0) {
+    const allPlugins = getPlugins();
+    if (allPlugins.length === 0) {
         showErrorState(['No test plugins found. Please reload the page.']);
         return;
     }
 
-    setRunning(plugins);
+    // Read checkbox state to determine which plugins are selected
+    const checkboxes = document.querySelectorAll('.plugin-select-checkbox');
+    let selectedPlugins = allPlugins;
+    if (checkboxes.length > 0) {
+        const checkedIds = new Set();
+        for (const cb of checkboxes) {
+            if (cb.checked) {
+                checkedIds.add(cb.getAttribute('data-plugin-id'));
+            }
+        }
+        selectedPlugins = allPlugins.filter((plugin) => checkedIds.has(plugin.id));
+
+        // If nothing is selected, show error
+        if (selectedPlugins.length === 0) {
+            showErrorState(['Select at least one test target to run.']);
+            announce('Select at least one test target to run.');
+            return;
+        }
+
+        // Announce selection count
+        const total = allPlugins.length;
+        const selected = selectedPlugins.length;
+        announce(`${selected} of ${total} test targets selected`);
+    }
+
+    setRunning(selectedPlugins);
 
     const config = { timeoutMs: 30000, sampleDurationMs: 10000,
         adaptivePayload: true };
@@ -193,7 +218,7 @@ async function startTest() {
 
     try {
         const results = await runAll({
-            plugins,
+            plugins: selectedPlugins,
             config,
             onProgress: ({ done, total, pluginId, success }) => {
                 updateProgress(done, total);

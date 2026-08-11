@@ -7,6 +7,7 @@
 import { formatTimestamp } from './utils.js';
 import { presentHtml } from './results-presenter.js';
 import { escapeHtml } from './dom-utils.js';
+import { getPlugins } from './plugin-registry.js';
 
 // ===== State =====
 
@@ -15,6 +16,9 @@ let onRunTestCb = null;
 let onHistoryClickCb = null;
 let onHistoryDeleteCb = null;
 let onHistoryDeleteAllCb = null;
+
+/** @type {import('./types.js').TestPlugin[]} Cached plugin list for re-rendering checklists */
+let lastPlugins = [];
 
 // ===== Helpers =====
 
@@ -72,6 +76,37 @@ export function buildErrorHtml({ icon, title, message, items }) {
 
 // ===== Render =====
 
+/**
+ * Renders HTML for the plugin selection checklist.
+ *
+ * Each plugin gets a checkbox (native input) wrapped in a label.
+ * When `disabled` is true, checkboxes are disabled (during test runs).
+ * When `disabled` is false, checkboxes default to checked.
+ *
+ * @param {import('./types.js').TestPlugin[]} plugins
+ * @param {boolean} disabled
+ * @returns {string}
+ */
+function renderPluginChecklist(plugins, disabled) {
+    let items = '';
+    const checkedAttr = disabled ? '' : ' checked';
+    const disabledAttr = disabled ? ' disabled' : '';
+    for (const plugin of plugins) {
+        items += '<li class="plugin-check-item">'
+            + '<label class="plugin-check-label">'
+            + '<input type="checkbox" class="plugin-select-checkbox"'
+            + `${disabledAttr}${checkedAttr}`
+            + ` data-plugin-id="${escAttr(plugin.id)}">`
+            + `${escapeHtml(plugin.name)}</label>`
+            + `<span class="badge badge-neutral" style="font-size:0.75rem">${escapeHtml(plugin.category)}</span></li>`;
+    }
+    const count = plugins.length;
+    return '<section class="plugin-checklist" aria-label="Test target selection">'
+        + `<p class="plugin-checklist-count">${count} test target${count !== 1 ? 's' : ''} available</p>`
+        + `<ul class="plugin-check-list" role="group" aria-label="Select test targets">${items}</ul>`
+        + '</section>';
+}
+
 /** @param {string[]} warnings */
 function render(warnings) {
     const main = document.getElementById('main-content');
@@ -93,7 +128,13 @@ function render(warnings) {
     html += '<div class="controls">'
         + `<button class="btn btn-primary" id="${RUN_BTN_ID}"`
         + `${btnDisabled}>${btnText}</button></div>`;
-    html += `<div id="${RESULTS_AREA_ID}"></div>`
+
+    // Show plugin checklist in the pre-run state
+    const plugins = getPlugins();
+    lastPlugins = plugins;
+    const checklistHtml = renderPluginChecklist(plugins, false);
+
+    html += `<div id="${RESULTS_AREA_ID}">${checklistHtml}</div>`
         + `<div id="${HISTORY_AREA_ID}"></div>`;
     main.innerHTML = html;
 
@@ -132,6 +173,7 @@ export function getState() {
 /** @param {import('./types.js').TestPlugin[]} plugins */
 export function setRunning(plugins) {
     currentState = 'running';
+    lastPlugins = plugins;
     updateBtn(true);
     announce(`Running ${plugins.length} speed tests...`);
 
@@ -139,6 +181,8 @@ export function setRunning(plugins) {
     if (!area) {
         return;
     }
+
+    const checklistHtml = renderPluginChecklist(plugins, true);
 
     let items = '';
     for (const plugin of plugins) {
@@ -151,7 +195,8 @@ export function setRunning(plugins) {
             + '<span class="test-status-label">Queued</span></li>';
     }
 
-    area.innerHTML = '<div class="progress-container">'
+    area.innerHTML = `${checklistHtml}`
+        + '<div class="progress-container">'
         + '<div class="progress-bar" role="progressbar" aria-valuenow="0"'
         + ` aria-valuemin="0" aria-valuemax="${plugins.length}"`
         + ' aria-label="Test progress">'
@@ -170,7 +215,7 @@ export function setRunning(plugins) {
  * @param {string} pluginId - The id of the plugin to mark as running
  */
 export function markPluginRunning(pluginId) {
-    const item = document.querySelector(`[data-plugin-id="${escAttr(pluginId)}"]`);
+    const item = document.querySelector(`.test-status-item[data-plugin-id="${escAttr(pluginId)}"]`);
     if (!item) {
         return;
     }
@@ -233,7 +278,7 @@ export function updateProgress(done, total) {
 
 /** @param {string} pluginId @param {boolean} ok */
 export function updatePluginStatus(pluginId, ok) {
-    const item = document.querySelector(`[data-plugin-id="${escAttr(pluginId)}"]`);
+    const item = document.querySelector(`.test-status-item[data-plugin-id="${escAttr(pluginId)}"]`);
     if (!item) {
         return;
     }
@@ -263,7 +308,8 @@ export function setResults(run) {
         return;
     }
 
-    area.innerHTML = presentHtml(run);
+    const checklistHtml = renderPluginChecklist(lastPlugins.length > 0 ? lastPlugins : getPlugins(), false);
+    area.innerHTML = checklistHtml + presentHtml(run);
 
     // Move focus to results heading after content replacement
     const heading = area.querySelector('#results-heading');
@@ -509,7 +555,10 @@ export function showErrorState(reasons) {
         return;
     }
 
-    area.innerHTML = buildErrorHtml({
+    const plugins = lastPlugins.length > 0 ? lastPlugins : getPlugins();
+    const checklistHtml = renderPluginChecklist(plugins, false);
+
+    area.innerHTML = checklistHtml + buildErrorHtml({
         icon: '\u274C',
         title: 'Unable to Determine',
         message: 'Tests could not complete.',

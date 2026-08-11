@@ -209,7 +209,7 @@ describe('UI Manager', () => {
             setRunning([mockPlugin({ id: 'x', name: 'Service X' })]);
             markPluginRunning('x');
 
-            const item = document.querySelector('[data-plugin-id="x"]');
+            const item = document.querySelector('.test-status-item[data-plugin-id="x"]');
             expect(item.classList.contains('test-status-item--running')).toBe(true);
             expect(item.classList.contains('test-status-item--queued')).toBe(false);
             const label = item.querySelector('.test-status-label');
@@ -271,7 +271,7 @@ describe('UI Manager', () => {
             setRunning([mockPlugin({ id: 'ok', name: 'Complete Test' })]);
             updatePluginStatus('ok', true);
 
-            const item = document.querySelector('[data-plugin-id="ok"]');
+            const item = document.querySelector('.test-status-item[data-plugin-id="ok"]');
             expect(item.classList.contains('test-status-item--queued')).toBe(false);
             const icon = item.querySelector('.test-status-icon--complete');
             expect(icon).toBeDefined();
@@ -284,7 +284,7 @@ describe('UI Manager', () => {
             setRunning([mockPlugin({ id: 'fail', name: 'Error Test' })]);
             updatePluginStatus('fail', false);
 
-            const item = document.querySelector('[data-plugin-id="fail"]');
+            const item = document.querySelector('.test-status-item[data-plugin-id="fail"]');
             const icon = item.querySelector('.test-status-icon--error');
             expect(icon).toBeDefined();
             const label = item.querySelector('.test-status-label');
