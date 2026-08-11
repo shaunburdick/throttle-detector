@@ -76,7 +76,7 @@ describe('Test Runner', () => {
             expect(result.timestamp).toBeTruthy();
         });
 
-        it('calls onProgress after each plugin with correct (done, total)', async () => {
+        it('calls onProgress after each plugin with correct { done, total, pluginId, success }', async () => {
             const plugins = [
                 createSuccessPlugin({ id: 'a', speedMbps: 10, delayMs: 10 }),
                 createSuccessPlugin({ id: 'b', speedMbps: 20, delayMs: 10 }),
@@ -84,18 +84,18 @@ describe('Test Runner', () => {
             ];
             const progressCalls = [];
             const results = await runAll(plugins, DEFAULT_CONFIG,
-                (done, total) => {
-                    progressCalls.push({ done, total });
+                ({ done, total, pluginId, success }) => {
+                    progressCalls.push({ done, total, pluginId, success });
                 });
             expect(results).toHaveLength(3);
             expect(progressCalls).toEqual([
-                { done: 1, total: 3 },
-                { done: 2, total: 3 },
-                { done: 3, total: 3 },
+                { done: 1, total: 3, pluginId: 'a', success: true },
+                { done: 2, total: 3, pluginId: 'b', success: true },
+                { done: 3, total: 3, pluginId: 'c', success: true },
             ]);
         });
 
-        it('does not call onProgress when not provided', async () => {
+        it('does not throw when onProgress callback is omitted', async () => {
             const plugins = [
                 createSuccessPlugin({ id: 'a', speedMbps: 10 }),
             ];
@@ -104,7 +104,7 @@ describe('Test Runner', () => {
             expect(results).toHaveLength(1);
         });
 
-        it('reports progress even when a plugin fails', async () => {
+        it('reports progress even when a plugin fails — failure reports success: false', async () => {
             const plugins = [
                 createSuccessPlugin({ id: 'ok', speedMbps: 50 }),
                 createErrorPlugin({ id: 'fail', errorMessage: 'boom' }),
@@ -112,14 +112,14 @@ describe('Test Runner', () => {
             ];
             const progressCalls = [];
             const results = await runAll(plugins, DEFAULT_CONFIG,
-                (done, total) => {
-                    progressCalls.push({ done, total });
+                ({ done, total, pluginId, success }) => {
+                    progressCalls.push({ done, total, pluginId, success });
                 });
             expect(results).toHaveLength(3);
             expect(progressCalls).toEqual([
-                { done: 1, total: 3 },
-                { done: 2, total: 3 },
-                { done: 3, total: 3 },
+                { done: 1, total: 3, pluginId: 'ok', success: true },
+                { done: 2, total: 3, pluginId: 'fail', success: false },
+                { done: 3, total: 3, pluginId: 'also-ok', success: true },
             ]);
         });
 

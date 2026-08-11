@@ -190,12 +190,10 @@ async function startTest() {
 
     try {
         const results = await runAll(plugins, config,
-            (done, total) => {
+            ({ done, total, pluginId, success }) => {
                 updateProgress(done, total);
+                updatePluginStatus(pluginId, success);
             });
-        for (const result of results) {
-            updatePluginStatus(result.pluginId, result.status === 'success');
-        }
         const testRun = finalizeTestRun(results, extraWarnings);
         await persistAndRefreshHistory(testRun);
     } catch (error) {

@@ -76,11 +76,12 @@ async function runPluginWithTimeout(plugin, config) {
  *
  * @param {import('./types.js').TestPlugin[]} plugins
  * @param {import('./types.js').TestConfig} config
- * @param {function(number, number): void} [onProgress] — Optional callback
- *        invoked after each plugin completes. Receives `(done, total)` where
- *        `done` is the number of completed plugins and `total` is the total
- *        plugin count. Use this to drive incremental progress indicators
- *        during long test runs.
+ * @param {function({ done: number, total: number, pluginId: string, success: boolean }): void} [onProgress]
+ *        Optional callback invoked after each plugin completes. Receives an
+ *        object `{ done, total, pluginId, success }` where `done` is the
+ *        number of completed plugins, `total` is the total plugin count,
+ *        `pluginId` identifies the plugin that just finished, and `success`
+ *        is true only when the result status is `'success'`.
  * @returns {Promise<import('./types.js').TestResult[]>}
  */
 export async function runAll(plugins, config, onProgress) {
@@ -93,7 +94,13 @@ export async function runAll(plugins, config, onProgress) {
             results.push(errorResult(plugin, error));
         }
         if (onProgress) {
-            onProgress(results.length, plugins.length);
+            const lastResult = results[results.length - 1];
+            onProgress({
+                done: results.length,
+                total: plugins.length,
+                pluginId: lastResult.pluginId,
+                success: lastResult.status === 'success',
+            });
         }
     }
     return results;
