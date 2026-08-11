@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
     adaptRangeChunkSize, zeroSample, createBuildResult,
     downloadFullFile, downloadRange, createUrlBasedRunLoop,
-    createRangeBasedRunLoop,
+    createRangeBasedRunLoop, createChunkBasedRunLoop,
 } from '../../src/lib/plugin-runner.js';
 import {
     cloudflarePlugin, CHUNK_SIZES, adjustChunkIndex,
@@ -104,6 +104,7 @@ const CATEGORY_CDN = 'cdn';
 const CATEGORY_STREAMING = 'streaming';
 const SAMPLE_URL = 'https://example.com/test.bin';
 const RANGE_URL = 'https://example.com/file.pdf';
+const CLOUDFLARE_URL = 'https://speed.cloudflare.com/__down';
 
 beforeEach(() => {
     setFetch(mockFetchOk());
@@ -310,6 +311,22 @@ describe('Plugin Runner (plugin-runner.js)', () => {
             const reqOpts = mockFn.mock.calls[0][1];
             expect(reqOpts.headers.Range).toBe('bytes=0-65535');
         });
+
+        it('returns zeroSample when blob.size is zero', async () => {
+            setFetch(vi.fn().mockResolvedValue({
+                ok: false,
+                status: 206,
+                blob: () => new Blob([]),
+            }));
+
+            const sample = await downloadRange({
+                url: RANGE_URL,
+                chunkBytes: 1024,
+                timeoutMs: TEST_TIMEOUT_MS,
+            });
+
+            expect(sample).toEqual(zeroSample());
+        });
     });
 
     describe('createUrlBasedRunLoop', () => {
@@ -443,6 +460,103 @@ describe('Plugin Runner (plugin-runner.js)', () => {
                 adaptivePayload: true,
             });
             expect(resolveUrl).toHaveBeenCalled();
+        });
+    });
+
+    describe('createChunkBasedRunLoop', () => {
+        const chunkSizes = [65536, 131072, 262144, 524288];
+
+        it('returns a plugin-compatible run function', async () => {
+            setFetch(mockFetchOk({ contentLength: 65536 }));
+            mockResourceTiming(CLOUDFLARE_URL, 65536);
+
+            const build = createBuildResult({
+                pluginId: 'chunk-loop',
+                targetName: 'Chunk Loop',
+                category: CATEGORY_CDN,
+            });
+            const downloadFn = vi.fn(async () => ({
+                bytes: 65536, speedMbps: 50, durationMs: 500,
+            }));
+            const nextChunk = vi.fn((dur, idx) => idx);
+            const buildUrl = vi.fn((sz) => `${CLOUDFLARE_URL}?bytes=${sz}`);
+
+            const run = createChunkBasedRunLoop({
+                buildResult: build,
+                sizes: chunkSizes,
+                buildUrl,
+                nextChunk,
+                downloadFn,
+            });
+
+            const result = await run({
+                sampleDurationMs: 300,
+                timeoutMs: TEST_TIMEOUT_MS,
+                adaptivePayload: true,
+            });
+
+            expect(result.pluginId).toBe('chunk-loop');
+            expect(['success', 'error']).toContain(result.status);
+        });
+
+        it('advances chunk index via nextChunk strategy', async () => {
+            const downloadFn = vi.fn(async () => ({
+                bytes: 65536, speedMbps: 50, durationMs: 100,
+            }));
+            const nextChunk = vi.fn((_duration, idx) => idx + 1);
+            const buildUrl = (sz) => `${CLOUDFLARE_URL}?bytes=${sz}`;
+
+            const build = createBuildResult({
+                pluginId: 'advance',
+                targetName: 'Advance',
+                category: CATEGORY_CDN,
+            });
+            const run = createChunkBasedRunLoop({
+                buildResult: build,
+                sizes: chunkSizes,
+                buildUrl,
+                nextChunk,
+                downloadFn,
+            });
+
+            await run({
+                sampleDurationMs: 500,
+                timeoutMs: TEST_TIMEOUT_MS,
+                adaptivePayload: true,
+            });
+
+            // nextChunk should have been called multiple times as chunkIndex advances
+            expect(nextChunk).toHaveBeenCalled();
+            // downloadFn should have been called at least once
+            expect(downloadFn).toHaveBeenCalled();
+        });
+
+        it('returns error when all samples fail', async () => {
+            const failDownload = vi.fn(async () => zeroSample());
+            const nextChunk = (_duration, currentIndex) => currentIndex;
+            const buildUrl = (sz) => `${CLOUDFLARE_URL}?bytes=${sz}`;
+
+            const build = createBuildResult({
+                pluginId: 'fail-chunk',
+                targetName: 'Fail Chunk',
+                category: CATEGORY_CDN,
+            });
+            const run = createChunkBasedRunLoop({
+                buildResult: build,
+                sizes: chunkSizes,
+                buildUrl,
+                nextChunk,
+                downloadFn: failDownload,
+            });
+
+            const result = await run({
+                sampleDurationMs: 500,
+                timeoutMs: TEST_TIMEOUT_MS,
+                adaptivePayload: true,
+            });
+
+            expect(result.status).toBe('error');
+            expect(result.errorMessage).toContain('Not enough valid samples');
         });
     });
 });

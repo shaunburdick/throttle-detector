@@ -24,7 +24,7 @@ function escAttr(str) {
 }
 
 /** @param {string} msg */
-function announce(msg) {
+export function announce(msg) {
     const live = document.getElementById('status-live');
     if (!live) {
         return;
@@ -379,24 +379,23 @@ function showInlineConfirm(triggerEl, message, onConfirm) {
      */
     function onDocumentClick(event) {
         if (cancelled || !wrapper.isConnected) {
-            document.removeEventListener('click', onDocumentClick, true);
+            document.removeEventListener('click', onDocumentClick);
             return;
         }
         if (!wrapper.contains(event.target)) {
-            event.stopPropagation();
             restore();
         }
     }
 
     yesBtn.addEventListener('click', () => {
         cancelled = true;
-        document.removeEventListener('click', onDocumentClick, true);
+        document.removeEventListener('click', onDocumentClick);
         onConfirm();
     });
 
     cancelBtn.addEventListener('click', restore);
     wrapper.addEventListener('keydown', createConfirmFocusTrap(yesBtn, cancelBtn, restore));
-    document.addEventListener('click', onDocumentClick, true);
+    document.addEventListener('click', onDocumentClick);
 
     triggerEl.replaceWith(wrapper);
     cancelBtn.focus();

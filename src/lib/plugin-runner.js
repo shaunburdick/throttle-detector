@@ -78,11 +78,38 @@ export function createBuildResult({ pluginId, targetName, category }) {
     };
 }
 
-// ===== Fetch Timeout Wrapper =====
+// ===== Abort + Timeout Helpers =====
+
+/**
+ * Wraps an async operation with an AbortController timeout.
+ *
+ * Handles AbortController + setTimeout + clearTimeout lifecycle.
+ * Does NOT convert errors — callers decide how to handle failures.
+ * Used by `withFetchTimeout` and `github.js:resolveUrl`.
+ *
+ * @param {number} timeoutMs - Overall timeout in milliseconds
+ * @param {(signal: AbortSignal) => Promise<T>} fn - Async operation
+ * @returns {Promise<T>}
+ * @template T
+ */
+export async function withAbortTimeout(timeoutMs, fn) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+        () => controller.abort(),
+        Math.min(timeoutMs, PER_FETCH_TIMEOUT)
+    );
+    try {
+        return await fn(controller.signal);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
 
 /**
  * Wraps an async fetch operation with an AbortController timeout.
  *
+ * Builds on `withAbortTimeout`, catching all errors and returning
+ * `zeroSample()` so callers always get a valid speed sample.
  * Eliminates ~10 lines of AbortController + setTimeout +
  * try/catch/finally boilerplate from both downloadFullFile and
  * downloadRange.
@@ -93,18 +120,41 @@ export function createBuildResult({ pluginId, targetName, category }) {
  * @template T
  */
 export async function withFetchTimeout(timeoutMs, fn) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-        () => controller.abort(),
-        Math.min(timeoutMs, PER_FETCH_TIMEOUT)
-    );
     try {
-        return await fn(controller.signal);
+        return await withAbortTimeout(timeoutMs, fn);
     } catch {
         return zeroSample();
-    } finally {
-        clearTimeout(timeoutId);
     }
+}
+
+// ===== Resource Timing Byte Count Helper =====
+
+/**
+ * Resolves the actual bytes transferred for a fetch request.
+ *
+ * Uses Resource Timing API (getEntriesByName) for O(1) lookup.
+ * Checks `transferSize > 0` first (includes headers + body),
+ * then `encodedBodySize > 0` (compressed body), then falls back
+ * to the caller-supplied `fallbackBytes`.
+ *
+ * Shared by `downloadFullFile` and Cloudflare's `downloadAndMeasure`.
+ *
+ * @param {string} url - The exact URL used in the fetch (including cache-bust)
+ * @param {number} fallbackBytes - Content-Length or expected bytes
+ * @returns {number}
+ */
+export function resolveByteCount(url, fallbackBytes) {
+    const entries = performance.getEntriesByName(url);
+    if (entries.length > 0) {
+        const entry = entries[entries.length - 1];
+        if (entry.transferSize > 0) {
+            return entry.transferSize;
+        }
+        if (entry.encodedBodySize > 0) {
+            return entry.encodedBodySize;
+        }
+    }
+    return fallbackBytes;
 }
 
 // ===== Full-File Download Helper =====
@@ -112,8 +162,8 @@ export async function withFetchTimeout(timeoutMs, fn) {
 /**
  * Downloads an entire file via fetch and measures throughput.
  *
- * Uses Resource Timing API (getEntriesByName) for accurate byte counts
- * with O(1) lookup, falling back to Content-Length header.
+ * Uses `resolveByteCount` for accurate byte counts via the Resource
+ * Timing API, falling back to Content-Length header.
  *
  * @param {{ url: string, timeoutMs: number }} opts
  * @returns {Promise<{bytes: number, speedMbps: number, durationMs: number}>}
@@ -134,13 +184,7 @@ export async function downloadFullFile({ url, timeoutMs }) {
         await resp.blob();
         const dur = performance.now() - t0;
 
-        // O(1) lookup via exact URL match
-        const entries = performance.getEntriesByName(cacheBust);
-        let bytes = contentLength;
-        if (entries.length > 0) {
-            const entry = entries[entries.length - 1];
-            bytes = entry.transferSize || entry.encodedBodySize || contentLength;
-        }
+        const bytes = resolveByteCount(cacheBust, contentLength);
         if (bytes === 0) {
             return zeroSample();
         }
@@ -381,7 +425,7 @@ export function createRangeBasedRunLoop({ buildResult, resolveUrl,
                     baseUrlPromise = resolveUrl();
                 }
                 const baseUrl = await baseUrlPromise;
-                const size = adaptiveFn ? adaptiveFn(samples) : undefined;
+                const size = adaptiveFn ? adaptiveFn(samples) : DEFAULT_RANGE_CONFIG.minChunk;
                 return downloadFn({ url: baseUrl, chunkBytes: size, timeoutMs });
             };
         },

@@ -20,7 +20,7 @@ import { save, loadAll, deleteRun, deleteAll } from './lib/history-manager.js';
 import {
     init, setRunning, updateProgress, updatePluginStatus,
     setResults, renderHistory, showErrorState, markPluginRunning,
-    buildErrorHtml,
+    buildErrorHtml, announce,
 } from './lib/ui-manager.js';
 
 // ===== Helpers =====
@@ -148,22 +148,6 @@ async function loadHistoryEntry(runId) {
 }
 
 /**
- * Announces a deletion message to the screen reader aria-live region.
- *
- * @param {string} msg
- */
-function announceDeletion(msg) {
-    const live = document.getElementById('status-live');
-    if (!live) {
-        return;
-    }
-    live.textContent = '';
-    requestAnimationFrame(() => {
-        live.textContent = msg;
-    });
-}
-
-/**
  * Deletes a single history entry by runId and refreshes the UI.
  *
  * @param {string} runId
@@ -172,7 +156,7 @@ async function deleteHistoryEntry(runId) {
     try {
         deleteRun(runId);
         renderHistory(loadAll());
-        announceDeletion('Test run deleted');
+        announce('Test run deleted');
     } catch {
         void 0;
     }
@@ -185,7 +169,7 @@ async function deleteAllHistory() {
     try {
         const deletedCount = deleteAll();
         renderHistory(loadAll());
-        announceDeletion(`${deletedCount} test runs deleted`);
+        announce(`${deletedCount} test runs deleted`);
     } catch {
         void 0;
     }

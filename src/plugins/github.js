@@ -13,6 +13,7 @@ import { registerPlugin } from '../lib/plugin-registry.js';
 import {
     createBuildResult, createRangeBasedRunLoop,
     downloadRange, adaptRangeChunkSize, PER_FETCH_TIMEOUT,
+    withAbortTimeout,
 } from '../lib/plugin-runner.js';
 
 const PRIMARY_URL = 'https://raw.githubusercontent.com/shaunburdick/throttle-detector/main/test-assets/25mb.bin';
@@ -31,27 +32,27 @@ const buildResult = createBuildResult({
  * Probes the primary URL with a zero-byte Range request. Falls back to
  * the secondary URL if the probe fails.
  *
+ * Uses `withAbortTimeout` for the AbortController lifecycle (unlike
+ * `withFetchTimeout`, which would swallow errors — we need to
+ * distinguish between success and failure to decide on fallback).
+ *
  * @returns {Promise<string>}
  */
 async function resolveUrl() {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-        () => controller.abort(), PER_FETCH_TIMEOUT
-    );
     try {
-        const resp = await fetch(`${PRIMARY_URL}?probe=1`, {
-            signal: controller.signal,
-            cache: 'no-store',
-            headers: { Range: 'bytes=0-0' },
+        return await withAbortTimeout(PER_FETCH_TIMEOUT, async (signal) => {
+            const resp = await fetch(`${PRIMARY_URL}?probe=1`, {
+                signal,
+                cache: 'no-store',
+                headers: { Range: 'bytes=0-0' },
+            });
+            if (!resp.ok && resp.status !== HTTP_PARTIAL_CONTENT) {
+                throw new Error('Primary unavailable');
+            }
+            return PRIMARY_URL;
         });
-        if (!resp.ok && resp.status !== HTTP_PARTIAL_CONTENT) {
-            return FALLBACK_URL;
-        }
-        return PRIMARY_URL;
     } catch {
         return FALLBACK_URL;
-    } finally {
-        clearTimeout(timeoutId);
     }
 }
 

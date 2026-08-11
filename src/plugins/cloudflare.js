@@ -14,7 +14,7 @@ import { registerPlugin } from '../lib/plugin-registry.js';
 import { bytesToMbps } from '../lib/utils.js';
 import {
     createBuildResult, createChunkBasedRunLoop, withFetchTimeout,
-    zeroSample,
+    zeroSample, resolveByteCount,
 } from '../lib/plugin-runner.js';
 
 const CLOUDFLARE_URL = 'https://speed.cloudflare.com/__down';
@@ -36,7 +36,7 @@ const CHUNK_SIZES = Object.freeze([
 /**
  * Downloads from Cloudflare's speed test endpoint and measures throughput.
  *
- * Uses Resource Timing (getEntriesByName) for accurate byte counts,
+ * Uses `resolveByteCount` (Resource Timing API) for accurate byte counts,
  * falling back to `expectedBytes` when timing data is unavailable.
  *
  * @param {{ url: string, expectedBytes: number, timeoutMs: number }} opts
@@ -51,16 +51,7 @@ async function downloadAndMeasure({ url, expectedBytes, timeoutMs }) {
         }
         await response.blob();
         const durationMs = performance.now() - fetchStart;
-        let bytes = expectedBytes;
-        const entries = performance.getEntriesByName(url);
-        if (entries.length > 0) {
-            const entry = entries[entries.length - 1];
-            if (entry.transferSize > 0) {
-                bytes = entry.transferSize;
-            } else if (entry.encodedBodySize > 0) {
-                bytes = entry.encodedBodySize;
-            }
-        }
+        const bytes = resolveByteCount(url, expectedBytes);
         if (bytes === 0) {
             return zeroSample();
         }
