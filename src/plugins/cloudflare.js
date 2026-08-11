@@ -1,18 +1,23 @@
 /**
  * Cloudflare baseline speed test plugin.
  *
+ * The baseline measurement — Cloudflare's speed test CDN serves raw
+ * bytes with adaptive chunk sizing to accurately measure connections
+ * from slow DSL to multi-gigabit fiber.
+ *
  * @module plugins/cloudflare
  */
 
 import { registerPlugin } from '../lib/plugin-registry.js';
 import { bytesToMbps, trimmedMean } from '../lib/utils.js';
+import {
+    createBuildResult, DEFAULT_SAMPLE_DURATION, DEFAULT_WARMUP_DURATION,
+    DEFAULT_TIMEOUT,
+} from '../lib/plugin-runner.js';
 
 const CLOUDFLARE_URL = 'https://speed.cloudflare.com/__down';
-const SAMPLE_DURATION_MS = 10000;
-const WARMUP_DURATION_MS = 1000;
 const MIN_SAMPLE_DURATION_MS = 200;
 const SLOW_SAMPLE_THRESHOLD_MS = 1000;
-const DEFAULT_TIMEOUT_MS = 30000;
 const KIB = 1024;
 const MIB = 1024 * 1024;
 const SMALL_CHUNK = 256 * KIB;
@@ -23,7 +28,8 @@ const LARGE_CHUNK = 25 * MIB;
 
 function chunkSizes() {
     return [
-        SMALL_CHUNK, MED_CHUNK, 1 * MIB, 2 * MIB, 5 * MIB, 10 * MIB, LARGE_CHUNK,
+        SMALL_CHUNK, MED_CHUNK, 1 * MIB, 2 * MIB, 5 * MIB, 10 * MIB,
+        LARGE_CHUNK,
     ];
 }
 
@@ -61,24 +67,6 @@ async function downloadAndMeasure({ url, expectedBytes, timeoutMs }) {
     }
 }
 
-const TARGET_NAME = 'Cloudflare (Baseline)';
-
-/**
- * @param {{ status: string, speedMbps: number|null, durationMs: number,
- *   bytesTransferred: number, errorMessage: string|null }} opts
- * @returns {import('../lib/types.js').TestResult}
- */
-function buildResult({ status, speedMbps, durationMs, bytesTransferred,
-    errorMessage }) {
-    return {
-        targetName: TARGET_NAME, pluginId: 'cloudflare',
-        status, downloadSpeedMbps: speedMbps,
-        durationMs, bytesTransferred, errorMessage,
-        timestamp: new Date().toISOString(),
-        category: 'cdn',
-    };
-}
-
 /**
  * Determines next chunk size based on sample timing.
  *
@@ -97,6 +85,14 @@ function adjustChunkIndex(durationMs, currentIndex, maxIndex) {
     return currentIndex;
 }
 
+const TARGET_NAME = 'Cloudflare (Baseline)';
+
+const buildResult = createBuildResult({
+    pluginId: 'cloudflare',
+    targetName: TARGET_NAME,
+    category: 'cdn',
+});
+
 const cloudflarePlugin = {
     id: 'cloudflare',
     name: TARGET_NAME,
@@ -105,8 +101,9 @@ const cloudflarePlugin = {
 
     async run(config) {
         const startTime = performance.now();
-        const sampleDuration = config.sampleDurationMs || SAMPLE_DURATION_MS;
-        const timeoutMs = config.timeoutMs || DEFAULT_TIMEOUT_MS;
+        const sampleDuration = config.sampleDurationMs
+            || DEFAULT_SAMPLE_DURATION;
+        const timeoutMs = config.timeoutMs || DEFAULT_TIMEOUT;
         let totalBytes = 0;
         const samples = [];
 
@@ -125,7 +122,8 @@ const cloudflarePlugin = {
                 });
                 totalBytes += sample.bytes;
                 if (sample.speedMbps > 0
-                    && performance.now() - startTime > WARMUP_DURATION_MS) {
+                    && performance.now() - startTime
+                        > DEFAULT_WARMUP_DURATION) {
                     samples.push(sample.speedMbps);
                 }
                 chunkIndex = adjustChunkIndex(
