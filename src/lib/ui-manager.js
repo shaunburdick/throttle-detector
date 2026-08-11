@@ -133,7 +133,6 @@ export function getState() {
 /** @param {import('./types.js').TestPlugin[]} plugins */
 export function setRunning(plugins) {
     currentState = 'running';
-    lastPlugins = plugins;
     updateBtn(true);
     announce(`Running ${plugins.length} speed tests...`);
 
