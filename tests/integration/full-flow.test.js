@@ -12,8 +12,8 @@ const DEFAULT_CONFIG = {
 };
 
 const CLOUDFLARE_ID = 'cloudflare';
-const NETFLIX_ID = 'youtube';
-const GOOGLE_ID = 'cloudfront';
+const YOUTUBE_ID = 'youtube';
+const CLOUDFRONT_ID = 'cloudfront';
 const CORS_ERROR = 'CORS blocked';
 
 describe('Full Test Flow (Integration)', () => {
@@ -23,10 +23,10 @@ describe('Full Test Flow (Integration)', () => {
                 { id: CLOUDFLARE_ID, name: 'Cloudflare', speedMbps: 200 }
             ),
             createSuccessPlugin(
-                { id: NETFLIX_ID, name: 'Netflix', speedMbps: 80 }
+                { id: YOUTUBE_ID, name: 'YouTube', speedMbps: 80 }
             ),
             createSuccessPlugin(
-                { id: GOOGLE_ID, name: 'Google CDN', speedMbps: 180 }
+                { id: CLOUDFRONT_ID, name: 'CloudFront', speedMbps: 180 }
             ),
             createSuccessPlugin(
                 { id: 'jsdelivr', name: 'jsDelivr', speedMbps: 190 }
@@ -41,10 +41,10 @@ describe('Full Test Flow (Integration)', () => {
         expect(baseline.pluginId).toBe(CLOUDFLARE_ID);
         expect(discrepancies).toHaveLength(3);
 
-        const netflixDisc = discrepancies.find(
-            (disc) => disc.pluginId === NETFLIX_ID
+        const youtubeDisc = discrepancies.find(
+            (disc) => disc.pluginId === YOUTUBE_ID
         );
-        expect(netflixDisc.classification).toBe('strong_signal');
+        expect(youtubeDisc.classification).toBe('strong_signal');
 
         const testRun = {
             runId: generateRunId(),
@@ -58,7 +58,7 @@ describe('Full Test Flow (Integration)', () => {
 
         const html = presentHtml(testRun);
         expect(html).toContain('Cloudflare');
-        expect(html).toContain('Netflix');
+        expect(html).toContain('YouTube');
         expect(html).toContain('Speed Test Results');
         expect(html).toContain('Strong Throttling Signal');
 
@@ -74,10 +74,10 @@ describe('Full Test Flow (Integration)', () => {
                 { id: CLOUDFLARE_ID, name: 'Cloudflare', speedMbps: 100 }
             ),
             createErrorPlugin(
-                { id: NETFLIX_ID, name: 'Netflix', errorMessage: CORS_ERROR }
+                { id: YOUTUBE_ID, name: 'YouTube', errorMessage: CORS_ERROR }
             ),
             createSuccessPlugin(
-                { id: GOOGLE_ID, name: 'Google', speedMbps: 90 }
+                { id: CLOUDFRONT_ID, name: 'CloudFront', speedMbps: 90 }
             ),
         ];
 

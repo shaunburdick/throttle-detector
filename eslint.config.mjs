@@ -16,7 +16,6 @@ export default [
                 fetch: 'readonly',
                 Image: 'readonly',
                 self: 'readonly',
-                Worker: 'readonly',
                 localStorage: 'readonly',
                 setTimeout: 'readonly',
                 clearTimeout: 'readonly',
@@ -25,8 +24,6 @@ export default [
                 requestAnimationFrame: 'readonly',
                 URL: 'readonly',
                 URLSearchParams: 'readonly',
-                MessageChannel: 'readonly',
-                MessagePort: 'readonly',
             },
         },
         rules: {
@@ -42,14 +39,6 @@ export default [
             'llm-core/max-params': ['error', { max: 3 }],
             'llm-core/max-complexity': ['error', { max: 12 }],
             'llm-core/max-function-length': ['error', { max: 65 }],
-        },
-    },
-    {
-        files: ['src/workers/**/*.js'],
-        rules: {
-            'no-eval': 'off',
-            'security/detect-eval-with-expression': 'off',
-            '@eslint-community/eslint-comments/require-description': 'off',
         },
     },
     {

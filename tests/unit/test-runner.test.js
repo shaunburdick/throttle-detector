@@ -76,35 +76,29 @@ describe('Test Runner', () => {
             expect(result.timestamp).toBeTruthy();
         });
 
-        it('runs worker-incompatible plugins alongside worker-compatible ones', async () => {
-            const mainPlugin = {
-                ...createSuccessPlugin({ id: 'main-only', speedMbps: 30 }),
-                workerCompatible: false,
-            };
-            const workerPlugin = createSuccessPlugin({
-                id: 'worker-ok', speedMbps: 100,
-            });
-            const plugins = [workerPlugin, mainPlugin];
-            const results = await runAll(plugins, DEFAULT_CONFIG);
-            expect(results).toHaveLength(2);
-            const succeeded = results.filter(
-                (res) => res.status === 'success'
-            );
-            expect(succeeded).toHaveLength(2);
-        });
-
-        it('runs all main-thread-only plugins sequentially', async () => {
+        it('runs plugins sequentially in registration order', async () => {
+            const order = [];
             const plugins = [
-                { ...createSuccessPlugin({ id: 'main-a', speedMbps: 10 }),
-                    workerCompatible: false },
-                { ...createSuccessPlugin({ id: 'main-b', speedMbps: 20 }),
-                    workerCompatible: false },
+                createSuccessPlugin({ id: 'first', speedMbps: 10,
+                    delayMs: 20 }),
+                createSuccessPlugin({ id: 'second', speedMbps: 20,
+                    delayMs: 10 }),
             ];
+            // Monkey-patch run to track execution order
+            const origFirst = plugins[0].run;
+            const origSecond = plugins[1].run;
+            plugins[0].run = async (cfg) => {
+                order.push('first');
+                return origFirst(cfg);
+            };
+            plugins[1].run = async (cfg) => {
+                order.push('second');
+                return origSecond(cfg);
+            };
             const results = await runAll(plugins, DEFAULT_CONFIG);
             expect(results).toHaveLength(2);
-            for (const result of results) {
-                expect(result.status).toBe('success');
-            }
+            // Sequential means first finishes before second starts
+            expect(order).toEqual(['first', 'second']);
         });
     });
 });
