@@ -31,6 +31,8 @@
     --theme-transition-duration: 0.3s;
 }
 
+/* ===== Dark Mode ===== */
+
 /*
  * Dark mode color scheme.
  *
@@ -72,6 +74,7 @@
     }
 }
 
+:root {
     /* Spacing */
     --spacing-xs: 0.25rem;
     --spacing-sm: 0.5rem;
