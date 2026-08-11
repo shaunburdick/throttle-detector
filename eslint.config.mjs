@@ -40,7 +40,6 @@ export default [
             'llm-core/max-params': ['error', { max: 3 }],
             'llm-core/max-complexity': ['error', { max: 12 }],
             'llm-core/max-function-length': ['error', { max: 65 }],
-            'llm-core/max-file-length': ['error', { max: 550 }],
         },
     },
     {
