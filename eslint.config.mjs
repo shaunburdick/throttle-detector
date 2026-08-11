@@ -24,6 +24,7 @@ export default [
                 requestAnimationFrame: 'readonly',
                 URL: 'readonly',
                 URLSearchParams: 'readonly',
+                Blob: 'readonly',
             },
         },
         rules: {

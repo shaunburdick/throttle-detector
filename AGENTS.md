@@ -57,7 +57,9 @@ app.js (entry point)
   ├── results-presenter.js→ Dual-mode: presentHtml() for dashboard, presentJson() for API
   ├── history-manager.js  → localStorage CRUD, trim-to-fit, quota-aware pruning
   ├── utils.js            → trimmedMean, bytesToMbps, formatMbps, generateRunId, average, median
-  ├── dom-utils.js        → escapeHtml() — XSS-safe via textContent setter
+  ├── dom-utils.js        → escapeHtml(), announce() — XSS-safe encoding + aria-live announcements
+  ├── history-ui.js       → History rendering, inline confirm dialogs, focus trap
+  ├── json-viewer.js      → Formatted JSON viewer page at ?view=json
   └── types.js            → JSDoc type definitions (pure documentation, no runtime exports)
 ```
 
@@ -606,16 +608,18 @@ Constants defined across the codebase that you should not duplicate:
 
 | File | Lines | Purpose |
 |---|---|---|
-| `src/app.js` | 308 | Entry point: mode detection, callback wiring, bootstrap |
+| `src/app.js` | 501 | Entry point: mode detection, callback wiring, theme management, bootstrap |
 | `src/lib/plugin-runner.js` | 467 | Shared factories: run loops, download helpers, byte counting |
 | `src/lib/plugin-registry.js` | 85 | Plugin registration, validation, discovery |
 | `src/lib/test-runner.js` | 115 | Sequential orchestration with `Promise.race()` timeout guards |
 | `src/lib/results-analyzer.js` | 188 | Discrepancy calculation, baseline selection, verdict generation |
-| `src/lib/results-presenter.js` | 240 | Dual-mode output: `presentHtml()` and `presentJson()` |
-| `src/lib/ui-manager.js` | 519 | DOM rendering, progress bar, inline confirm dialogs, focus management |
+| `src/lib/results-presenter.js` | 276 | Dual-mode output: `presentHtml()`, `presentJson()`, `presentPluginChecklist()` |
+| `src/lib/ui-manager.js` | 352 | DOM rendering, progress bar, plugin status, focus management |
 | `src/lib/history-manager.js` | 199 | localStorage CRUD, quota-aware pruning, metadata stripping |
+| `src/lib/history-ui.js` | 260 | History list rendering, inline confirmation dialogs, focus trap |
+| `src/lib/json-viewer.js` | 78 | Formatted JSON viewer page at ?view=json |
 | `src/lib/utils.js` | 214 | `trimmedMean`, `bytesToMbps`, `formatMbps`, `generateRunId`, `average`, `median` |
-| `src/lib/dom-utils.js` | 22 | `escapeHtml()` — XSS-safe HTML encoding via `textContent` |
+| `src/lib/dom-utils.js` | 41 | `escapeHtml()`, `announce()` — XSS-safe encoding + aria-live announcements |
 | `src/lib/types.js` | 102 | JSDoc typedefs (documentation-only, no runtime exports) |
 | `src/plugins/cloudflare.js` | 121 | Baseline: Cloudflare CDN with index-based chunk sizing |
 | `src/plugins/cloudfront.js` | 45 | AWS CloudFront: Range requests with adaptive chunk sizing |
@@ -623,5 +627,5 @@ Constants defined across the codebase that you should not duplicate:
 | `src/plugins/github.js` | 73 | GitHub/Fastly CDN: Range requests with URL fallback |
 | `src/plugins/jsdelivr.js` | 43 | jsDelivr CDN: URL cycling |
 | `src/plugins/bunny-cdn.js` | 45 | Bunny CDN: URL cycling via `fonts.bunny.net` |
-| `css/main.css` | — | WCAG 2.2 AA styles with `prefers-reduced-motion` support |
+| `css/main.css` | — | WCAG 2.2 AA styles, dark mode, reduced-motion support |
 | `index.html` | — | Single HTML entry point, semantic markup |

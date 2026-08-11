@@ -16,18 +16,29 @@ import { runAll } from './lib/test-runner.js';
 import { analyzeResults } from './lib/results-analyzer.js';
 import { presentJson } from './lib/results-presenter.js';
 import { generateRunId } from './lib/utils.js';
+import { bootstrapJsonView } from './lib/json-viewer.js';
 import { save, loadAll, deleteRun, deleteAll } from './lib/history-manager.js';
 import {
     init, setRunning, updateProgress, updatePluginStatus,
-    setResults, renderHistory, showErrorState, markPluginRunning,
-    buildErrorHtml, announce,
+    setResults, resetResults, renderHistory, showErrorState,
+    markPluginRunning, buildErrorHtml, announce,
 } from './lib/ui-manager.js';
+
+const MAIN_ID = 'main-content';
+
+/** @type {string|null} Tracks the currently displayed result's runId */
+let lastDisplayedRunId = null;
 
 // ===== Helpers =====
 
 /** @returns {boolean} */
 function isJsonMode() {
     return new URLSearchParams(window.location.search).get('format') === 'json';
+}
+
+/** @returns {boolean} */
+function isViewMode() {
+    return new URLSearchParams(window.location.search).get('view') === 'json';
 }
 
 /** @returns {string[]} */
@@ -68,6 +79,7 @@ function finalizeTestRun(results, extraWarnings) {
         warnings: extraWarnings,
     };
     setResults(testRun);
+    lastDisplayedRunId = testRun.runId;
     return testRun;
 }
 
@@ -112,6 +124,7 @@ async function loadHistoryEntry(runId) {
                 warnings: [],
             };
             setResults(testRun);
+            lastDisplayedRunId = testRun.runId;
             return;
         }
 
@@ -127,6 +140,7 @@ async function loadHistoryEntry(runId) {
                 warnings: [],
             };
             setResults(testRun);
+            lastDisplayedRunId = testRun.runId;
             return;
         }
 
@@ -141,6 +155,7 @@ async function loadHistoryEntry(runId) {
             discrepancies, verdict, warnings: [],
         };
         setResults(testRun);
+        lastDisplayedRunId = testRun.runId;
     } catch {
         // History load failed — non-critical; showing current state only
         void 0;
@@ -156,6 +171,14 @@ async function deleteHistoryEntry(runId) {
     try {
         deleteRun(runId);
         renderHistory(loadAll());
+
+        // If we just deleted the currently displayed result,
+        // reset the results area to the initial state
+        if (lastDisplayedRunId === runId) {
+            resetResults();
+            lastDisplayedRunId = null;
+        }
+
         announce('Test run deleted');
     } catch {
         void 0;
@@ -169,6 +192,11 @@ async function deleteAllHistory() {
     try {
         const deletedCount = deleteAll();
         renderHistory(loadAll());
+
+        // All entries gone — always reset results to initial state
+        resetResults();
+        lastDisplayedRunId = null;
+
         announce(`${deletedCount} test runs deleted`);
     } catch {
         void 0;
@@ -177,15 +205,40 @@ async function deleteAllHistory() {
 
 // ===== Core Logic =====
 
-/** Runs a speed test using all registered plugins. */
+/** Runs a speed test using selected plugins. */
 async function startTest() {
-    const plugins = getPlugins();
-    if (plugins.length === 0) {
+    const allPlugins = getPlugins();
+    if (allPlugins.length === 0) {
         showErrorState(['No test plugins found. Please reload the page.']);
         return;
     }
 
-    setRunning(plugins);
+    // Read checkbox state to determine which plugins are selected
+    const checkboxes = document.querySelectorAll('.plugin-select-checkbox');
+    let selectedPlugins = allPlugins;
+    if (checkboxes.length > 0) {
+        const checkedIds = new Set();
+        for (const cb of checkboxes) {
+            if (cb.checked) {
+                checkedIds.add(cb.getAttribute('data-plugin-id'));
+            }
+        }
+        selectedPlugins = allPlugins.filter((plugin) => checkedIds.has(plugin.id));
+
+        // If nothing is selected, show error
+        if (selectedPlugins.length === 0) {
+            showErrorState(['Select at least one test target to run.']);
+            announce('Select at least one test target to run.');
+            return;
+        }
+
+        // Announce selection count
+        const total = allPlugins.length;
+        const selected = selectedPlugins.length;
+        announce(`${selected} of ${total} test targets selected`);
+    }
+
+    setRunning(selectedPlugins);
 
     const config = { timeoutMs: 30000, sampleDurationMs: 10000,
         adaptivePayload: true };
@@ -193,7 +246,7 @@ async function startTest() {
 
     try {
         const results = await runAll({
-            plugins,
+            plugins: selectedPlugins,
             config,
             onProgress: ({ done, total, pluginId, success }) => {
                 updateProgress(done, total);
@@ -202,6 +255,7 @@ async function startTest() {
             onPluginStart: (pluginId) => markPluginRunning(pluginId),
         });
         const testRun = finalizeTestRun(results, extraWarnings);
+
         await persistAndRefreshHistory(testRun);
     } catch (error) {
         showErrorState([`Test run failed: ${error.message || 'Unknown error'}`]);
@@ -209,6 +263,137 @@ async function startTest() {
 }
 
 // ===== Bootstrap =====
+
+/**
+ * Theme management state and helpers.
+ *
+ * @module app (theme section)
+ */
+
+/** localStorage key for persisted theme preference */
+const THEME_KEY = 'throttle-detector-theme';
+
+/** Valid theme values */
+const THEME_AUTO = 'auto';
+const THEME_LIGHT = 'light';
+const THEME_DARK = 'dark';
+
+/** Unicode icons for each theme state */
+const THEME_ICONS = {
+    [THEME_AUTO]: '\u2699',   // gear / system
+    [THEME_LIGHT]: '\u2600',  // sun
+    [THEME_DARK]: '\u263E',   // moon
+};
+
+/** @type {string} */
+let currentTheme = THEME_AUTO;
+
+/**
+ * Returns the effective color scheme, resolving 'auto' against the
+ * system `prefers-color-scheme` media query.
+ *
+ * @returns {'light'|'dark'}
+ */
+function getEffectiveTheme() {
+    if (currentTheme === THEME_AUTO) {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? THEME_DARK : THEME_LIGHT;
+    }
+    return currentTheme;
+}
+
+/**
+ * Applies the theme to the document by setting or removing the
+ * `data-theme` attribute on `<html>`.
+ */
+function applyTheme() {
+    const effective = getEffectiveTheme();
+    if (effective === THEME_DARK) {
+        document.documentElement.setAttribute('data-theme', THEME_DARK);
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+    }
+}
+
+/**
+ * Updates the toggle button label and aria-label to reflect the
+ * current theme selection.
+ */
+function updateThemeButton() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) {
+        return;
+    }
+    const icon = btn.querySelector('.theme-toggle-label');
+    if (icon) {
+        icon.textContent = THEME_ICONS[currentTheme] || THEME_ICONS[THEME_AUTO];
+    }
+    btn.setAttribute('aria-label', `Theme: ${currentTheme} (click to cycle)`);
+}
+
+/** Saves the current theme choice to localStorage. */
+function saveTheme() {
+    try {
+        localStorage.setItem(THEME_KEY, currentTheme);
+    } catch {
+        // Storage unavailable — non-critical
+        void 0;
+    }
+}
+
+/**
+ * Cycles the theme: auto → dark → light → auto.
+ * Applies, saves, and updates the button.
+ */
+function cycleTheme() {
+    if (currentTheme === THEME_AUTO) {
+        currentTheme = THEME_DARK;
+    } else if (currentTheme === THEME_DARK) {
+        currentTheme = THEME_LIGHT;
+    } else {
+        currentTheme = THEME_AUTO;
+    }
+    applyTheme();
+    saveTheme();
+    updateThemeButton();
+}
+
+/**
+ * Initializes theme management:
+ * 1. Reads saved preference from localStorage
+ * 2. Applies the correct `data-theme` attribute
+ * 3. Wires the toggle button
+ * 4. Listens for system preference changes (when in auto mode)
+ */
+function initTheme() {
+    // Restore saved preference
+    try {
+        const saved = localStorage.getItem(THEME_KEY);
+        if (saved === THEME_LIGHT || saved === THEME_DARK || saved === THEME_AUTO) {
+            currentTheme = saved;
+        }
+    } catch {
+        // Storage unavailable — use default (auto)
+        void 0;
+    }
+
+    applyTheme();
+    updateThemeButton();
+
+    // Wire toggle button
+    const btn = document.getElementById('theme-toggle');
+    if (btn) {
+        btn.addEventListener('click', cycleTheme);
+    }
+
+    // Listen for system preference changes
+    const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    darkQuery.addEventListener('change', () => {
+        if (currentTheme === THEME_AUTO) {
+            applyTheme();
+        }
+    });
+}
 
 async function bootstrapJsonMode() {
     try {
@@ -266,6 +451,8 @@ async function bootstrapHtmlMode(warnings) {
 }
 
 async function bootstrap() {
+    initTheme();
+
     const warnings = detectBrowserSupport();
     const critical = warnings.some((warning) =>
         warning.includes('Performance API'));
@@ -276,7 +463,7 @@ async function bootstrap() {
                 error: 'unsupported_browser', message: warnings[0],
             }, null, 2);
         } else {
-            const main = document.getElementById('main-content');
+            const main = document.getElementById(MAIN_ID);
             if (main) {
                 main.innerHTML = buildErrorHtml({
                     icon: '\u26A0\uFE0F',
@@ -285,6 +472,12 @@ async function bootstrap() {
                 });
             }
         }
+        return;
+    }
+
+    // ?view=json takes precedence over ?format=json
+    if (isViewMode()) {
+        bootstrapJsonView(MAIN_ID);
         return;
     }
 
@@ -297,7 +490,7 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-    const main = document.getElementById('main-content');
+    const main = document.getElementById(MAIN_ID);
     if (main) {
         main.innerHTML = buildErrorHtml({
             icon: '\u274C',
