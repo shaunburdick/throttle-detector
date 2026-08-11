@@ -76,6 +76,53 @@ describe('Test Runner', () => {
             expect(result.timestamp).toBeTruthy();
         });
 
+        it('calls onProgress after each plugin with correct (done, total)', async () => {
+            const plugins = [
+                createSuccessPlugin({ id: 'a', speedMbps: 10, delayMs: 10 }),
+                createSuccessPlugin({ id: 'b', speedMbps: 20, delayMs: 10 }),
+                createSuccessPlugin({ id: 'c', speedMbps: 30, delayMs: 10 }),
+            ];
+            const progressCalls = [];
+            const results = await runAll(plugins, DEFAULT_CONFIG,
+                (done, total) => {
+                    progressCalls.push({ done, total });
+                });
+            expect(results).toHaveLength(3);
+            expect(progressCalls).toEqual([
+                { done: 1, total: 3 },
+                { done: 2, total: 3 },
+                { done: 3, total: 3 },
+            ]);
+        });
+
+        it('does not call onProgress when not provided', async () => {
+            const plugins = [
+                createSuccessPlugin({ id: 'a', speedMbps: 10 }),
+            ];
+            // Should not throw — onProgress is optional
+            const results = await runAll(plugins, DEFAULT_CONFIG);
+            expect(results).toHaveLength(1);
+        });
+
+        it('reports progress even when a plugin fails', async () => {
+            const plugins = [
+                createSuccessPlugin({ id: 'ok', speedMbps: 50 }),
+                createErrorPlugin({ id: 'fail', errorMessage: 'boom' }),
+                createSuccessPlugin({ id: 'also-ok', speedMbps: 100 }),
+            ];
+            const progressCalls = [];
+            const results = await runAll(plugins, DEFAULT_CONFIG,
+                (done, total) => {
+                    progressCalls.push({ done, total });
+                });
+            expect(results).toHaveLength(3);
+            expect(progressCalls).toEqual([
+                { done: 1, total: 3 },
+                { done: 2, total: 3 },
+                { done: 3, total: 3 },
+            ]);
+        });
+
         it('runs plugins sequentially in registration order', async () => {
             const order = [];
             const plugins = [
