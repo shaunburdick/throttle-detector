@@ -183,6 +183,15 @@ footer[role="contentinfo"] {
     margin-top: var(--spacing-2xl);
 }
 
+footer a {
+    color: var(--color-primary);
+    text-underline-offset: 0.15em;
+}
+
+footer a:hover {
+    color: var(--color-primary-hover);
+}
+
 /* ===== Buttons ===== */
 .btn {
     display: inline-flex;
