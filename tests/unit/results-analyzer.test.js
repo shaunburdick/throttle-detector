@@ -61,7 +61,7 @@ describe('Results Analyzer', () => {
         it('selects Cloudflare as baseline when available', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', speedMbps: 200 }),
-                successResult({ pluginId: 'fast-com', speedMbps: 100 }),
+                successResult({ pluginId: 'youtube', speedMbps: 100 }),
             ];
             const analysis = analyzeResults(results);
             expect(analysis.baseline.pluginId).toBe('cloudflare');
@@ -79,11 +79,11 @@ describe('Results Analyzer', () => {
         it('detects normal result (within 15%)', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', speedMbps: 100 }),
-                successResult({ pluginId: 'fast-com', speedMbps: 90 }),
+                successResult({ pluginId: 'youtube', speedMbps: 90 }),
             ];
             const analysis = analyzeResults(results);
             const disc = analysis.discrepancies.find(
-                (dsc) => dsc.pluginId === 'fast-com'
+                (dsc) => dsc.pluginId === 'youtube'
             );
             expect(disc.classification).toBe('normal');
             expect(disc.isSignificant).toBe(false);
@@ -93,11 +93,11 @@ describe('Results Analyzer', () => {
         it('detects possible throttling (15-30% slower)', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', speedMbps: 100 }),
-                successResult({ pluginId: 'fast-com', speedMbps: 75 }),
+                successResult({ pluginId: 'youtube', speedMbps: 75 }),
             ];
             const analysis = analyzeResults(results);
             const disc = analysis.discrepancies.find(
-                (dsc) => dsc.pluginId === 'fast-com'
+                (dsc) => dsc.pluginId === 'youtube'
             );
             expect(disc.classification).toBe('possible_throttling');
             expect(disc.isSignificant).toBe(true);
@@ -107,11 +107,11 @@ describe('Results Analyzer', () => {
         it('detects strong throttling signal (>30% slower)', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', speedMbps: 100 }),
-                successResult({ pluginId: 'fast-com', speedMbps: 60 }),
+                successResult({ pluginId: 'youtube', speedMbps: 60 }),
             ];
             const analysis = analyzeResults(results);
             const disc = analysis.discrepancies.find(
-                (dsc) => dsc.pluginId === 'fast-com'
+                (dsc) => dsc.pluginId === 'youtube'
             );
             expect(disc.classification).toBe('strong_signal');
             expect(disc.isSignificant).toBe(true);
@@ -121,11 +121,11 @@ describe('Results Analyzer', () => {
         it('classifies faster-than-baseline as inconclusive', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', speedMbps: 100 }),
-                successResult({ pluginId: 'fast-com', speedMbps: 130 }),
+                successResult({ pluginId: 'youtube', speedMbps: 130 }),
             ];
             const analysis = analyzeResults(results);
             const disc = analysis.discrepancies.find(
-                (dsc) => dsc.pluginId === 'fast-com'
+                (dsc) => dsc.pluginId === 'youtube'
             );
             expect(disc.classification).toBe('inconclusive');
         });
@@ -133,11 +133,11 @@ describe('Results Analyzer', () => {
         it('correctly calculates percentage deviation', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', speedMbps: 100 }),
-                successResult({ pluginId: 'fast-com', speedMbps: 85 }),
+                successResult({ pluginId: 'youtube', speedMbps: 85 }),
             ];
             const analysis = analyzeResults(results);
             const disc = analysis.discrepancies.find(
-                (dsc) => dsc.pluginId === 'fast-com'
+                (dsc) => dsc.pluginId === 'youtube'
             );
             expect(disc.percentageDeviation).toBe(-15);
         });
@@ -145,7 +145,7 @@ describe('Results Analyzer', () => {
         it('handles mixed success and error results', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', speedMbps: 200 }),
-                successResult({ pluginId: 'fast-com', speedMbps: 100 }),
+                successResult({ pluginId: 'youtube', speedMbps: 100 }),
                 errorResult({ pluginId: 'test-err', errorMessage: 'Failed' }),
             ];
             const analysis = analyzeResults(results);
@@ -159,7 +159,7 @@ describe('Results Analyzer', () => {
         it('returns correct verdict message for no_throttling', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', speedMbps: 100 }),
-                successResult({ pluginId: 'fast-com', speedMbps: 95 }),
+                successResult({ pluginId: 'youtube', speedMbps: 95 }),
             ];
             const analysis = analyzeResults(results);
             expect(analysis.verdict.message).toBe('No throttling detected');
@@ -169,11 +169,11 @@ describe('Results Analyzer', () => {
         it('returns correct verdict message for strong_signal', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', name: 'Baseline', speedMbps: 200 }),
-                successResult({ pluginId: 'fast-com', name: 'Fast.com', speedMbps: 50 }),
+                successResult({ pluginId: 'youtube', name: 'YouTube', speedMbps: 50 }),
             ];
             const analysis = analyzeResults(results);
             expect(analysis.verdict.level).toBe('strong_signal');
-            expect(analysis.verdict.message).toContain('Fast.com');
+            expect(analysis.verdict.message).toContain('YouTube');
             expect(analysis.verdict.indicator).toBe('red');
         });
 
@@ -189,8 +189,8 @@ describe('Results Analyzer', () => {
         it('raises strongest verdict when multiple signals present', () => {
             const results = [
                 successResult({ pluginId: 'cloudflare', speedMbps: 200 }),
-                successResult({ pluginId: 'fast-com', name: 'Netflix', speedMbps: 160 }),
-                successResult({ pluginId: 'cloudfront', name: 'CloudFront', speedMbps: 80 }),
+                successResult({ pluginId: 'youtube', name: 'Netflix', speedMbps: 160 }),
+                successResult({ pluginId: 'cloudfront', name: 'Google', speedMbps: 80 }),
             ];
             const analysis = analyzeResults(results);
             expect(analysis.verdict.level).toBe('strong_signal');
