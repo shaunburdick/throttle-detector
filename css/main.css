@@ -27,6 +27,9 @@
     --color-danger-bg: #ffebee;
     --color-neutral-bg: #f5f5f7;
 
+    /* Running-state background — subtle blue accent for active test items */
+    --color-running-bg: #e8f0fe;
+
     /* Theme toggle */
     --theme-transition-duration: 0.3s;
 }
@@ -62,6 +65,9 @@
     --color-warning-bg: rgba(255, 152, 0, 0.15);
     --color-danger-bg: rgba(255, 82, 82, 0.15);
     --color-neutral-bg: rgba(189, 189, 189, 0.1);
+
+    /* Running-state background — subtle blue accent using primary color */
+    --color-running-bg: rgba(77, 166, 255, 0.12);
 
     /* Adjust focus ring for dark backgrounds */
     --focus-ring-color: #4da6ff;
@@ -795,7 +801,7 @@ button.history-entry:focus-visible {
 /* Running — spinner icon, blue accent, spin animation */
 .test-status-item--running {
     color: var(--color-text);
-    background-color: #e8f0fe;
+    background-color: var(--color-running-bg);
 }
 
 .test-status-icon--running {

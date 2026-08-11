@@ -250,7 +250,8 @@ export function renderHistory(entries, area, { onHistoryClick, onHistoryDelete, 
 
     const deleteAllBtn = area.querySelector('.btn-delete-all');
     if (deleteAllBtn && onHistoryDeleteAll) {
-        deleteAllBtn.addEventListener('click', () => {
+        deleteAllBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
             showInlineConfirm(deleteAllBtn, `Delete all ${count} runs?`, () => {
                 onHistoryDeleteAll();
             });
