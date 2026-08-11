@@ -153,9 +153,7 @@ Fail-fast validation at registration time catches configuration errors early (wh
 
 ## Plugin Execution Order
 
-Plugins execute in parallel (one Web Worker each). The registry does not impose any ordering — all plugins start simultaneously. Results are collected as they arrive (first-come, first-served display order).
-
-For the sequential fallback (no Web Workers), plugins execute in registration order.
+Plugins execute sequentially in registration order on the main thread. Each plugin runs to completion (or timeout) before the next begins. This sequential execution ensures each plugin gets full access to the available bandwidth for accurate speed measurements. Results are collected in the order plugins complete.
 
 ## Registry State
 

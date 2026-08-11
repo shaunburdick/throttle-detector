@@ -112,7 +112,21 @@
 
 ## 2. Web Worker Feasibility for Parallel Test Execution
 
-### 2.1 Browser Support
+> **STATUS: SUPERSEDED (2026-08-10)** — Web Workers were removed in v1.2.0. Parallel execution caused false-positive throttling detection: plugins downloading simultaneously competed for the same network bandwidth, artificially lowering individual speed measurements. The system now uses sequential main-thread execution with `Promise.race()` timeout guards. The research below is preserved for reference.
+
+### 2.0 Decision: Removed (v1.2.0)
+
+**Reason for removal**: Empirical testing revealed that parallel Web Worker execution produced false-positive throttling signals. When multiple plugins ran simultaneous downloads, they split the available bandwidth — making each individual measurement appear slower than the connection's true capacity. On a 200 Mbps connection with 4 parallel plugins, each plugin might report ~50 Mbps, incorrectly flagging all services as "strong throttling signal."
+
+**Resolution**: Switched to sequential main-thread execution. Each plugin gets the full network pipe during its test window. Main-thread responsiveness is maintained by time-bounded execution (`Promise.race()` with `timeoutMs`). Total test duration for 4 plugins at ~10s each is ~40s, well within the 60s SC-001 target.
+
+**Artifacts removed**:
+- `src/workers/test-worker.js` — Web Worker executor (deleted)
+- `workerCompatible` flag on `TestPlugin` interface (removed)
+- Worker message format contract (`contracts/worker-message-format.md`) marked obsolete
+- All plugin serialization/eval infrastructure
+
+### 2.1 Browser Support (Original Research — Archived)
 
 Web Workers are supported in all modern browsers:
 - Chrome 4+ (2010)
@@ -122,7 +136,7 @@ Web Workers are supported in all modern browsers:
 
 **Constitution requirement**: Latest 2 versions of Chrome, Firefox, Safari, Edge — all fully support Web Workers.
 
-### 2.2 Worker Communication Model
+### 2.2 Worker Communication Model (Original Research — Archived)
 
 ```
 Main Thread                    Web Worker
@@ -142,7 +156,7 @@ Main Thread                    Web Worker
 
 **Function serialization**: Plugin `run()` functions are serialized using `.toString()` and sent to the worker. The worker eval's the function string and executes it. This means plugins must be self-contained (no closure captures) — which is architecturally desirable.
 
-### 2.3 Sequential Fallback
+### 2.3 Sequential Fallback (Original Research — Archived)
 
 When Web Workers are unavailable (older browser, restrictive CSP), the TestRunner falls back to sequential execution on the main thread:
 
@@ -162,14 +176,16 @@ if (typeof Worker === 'undefined') {
 
 **Impact**: The UI may briefly freeze during each test, but each test is time-bounded by `timeoutMs` (default 30s). A warning is displayed: "Your browser doesn't support parallel testing. Tests will run one at a time, which may take longer."
 
-### 2.4 Performance API in Web Workers
+### 2.4 Performance API in Web Workers (Original Research — Archived)
 
 - `PerformanceResourceTiming` is **available in Web Workers** (per MDN)
 - `performance.now()` is available in Web Workers
 - Workers have their own `performance` object, separate from the main thread
 - Resource Timing entries from fetch() calls made inside the worker are observable in the worker
 
-**Verdict**: Web Workers are the correct approach for parallel test execution. They keep the UI responsive and thread-isolate each test's network activity.
+**Verdict**: ~~Web Workers are the correct approach for parallel test execution.~~ **SUPERSEDED**: Web Workers were removed due to bandwidth contention issues (see §2.0). Sequential main-thread execution with `Promise.race()` guards provides more accurate measurements.
+
+## 2.2 Worker Communication Model (Original Research — Archived)
 
 ## 3. Performance API Measurement Accuracy
 

@@ -1,15 +1,17 @@
 /**
- * Test Runner — orchestrates speed test execution.
+ * Test Runner — orchestrates sequential speed test execution.
+ *
+ * All tests run one at a time on the main thread so that each
+ * plugin gets dedicated bandwidth. Parallel worker execution
+ * was removed because it caused false-positive throttling signals
+ * when the fastest plugin (Cloudflare) consumed most of the pipe.
  *
  * @module lib/test-runner
  */
 
-const GRACE_MS = 2000;
-
-// === Helpers (function declarations hoist) ===
-// Ordered so every function is defined before its first use.
-
 /**
+ * Creates a timeout result after the configured timeout elapses.
+ *
  * @param {import('./types.js').TestPlugin} plugin
  * @param {number} timeoutMs
  * @returns {Promise<import('./types.js').TestResult>}
@@ -18,9 +20,12 @@ function timeoutResult(plugin, timeoutMs) {
     return new Promise((resolve) => {
         setTimeout(() => {
             resolve({
-                targetName: plugin.name, pluginId: plugin.id,
-                status: 'timeout', downloadSpeedMbps: null,
-                durationMs: timeoutMs, bytesTransferred: 0,
+                targetName: plugin.name,
+                pluginId: plugin.id,
+                status: 'timeout',
+                downloadSpeedMbps: null,
+                durationMs: timeoutMs,
+                bytesTransferred: 0,
                 errorMessage: `Timed out after ${timeoutMs / 1000} seconds`,
                 timestamp: new Date().toISOString(),
             });
@@ -29,37 +34,27 @@ function timeoutResult(plugin, timeoutMs) {
 }
 
 /**
+ * Builds an error result from a caught exception.
+ *
  * @param {import('./types.js').TestPlugin} plugin
  * @param {Error|object} error
  * @returns {import('./types.js').TestResult}
  */
 function errorResult(plugin, error) {
     return {
-        targetName: plugin.name, pluginId: plugin.id,
-        status: 'error', downloadSpeedMbps: null,
-        durationMs: 0, bytesTransferred: 0,
+        targetName: plugin.name,
+        pluginId: plugin.id,
+        status: 'error',
+        downloadSpeedMbps: null,
+        durationMs: 0,
+        bytesTransferred: 0,
         errorMessage: error.message || 'Unknown error',
         timestamp: new Date().toISOString(),
     };
 }
 
 /**
- * @param {import('./types.js').TestPlugin} plugin
- * @param {string} error
- * @returns {import('./types.js').TestResult}
- */
-function workerErrorResult(plugin, error) {
-    return {
-        targetName: plugin.name, pluginId: plugin.id,
-        status: 'error', downloadSpeedMbps: null,
-        durationMs: 0, bytesTransferred: 0,
-        errorMessage: error || 'Worker error',
-        timestamp: new Date().toISOString(),
-    };
-}
-
-/**
- * Runs a plugin on the main thread with timeout.
+ * Runs a single plugin with a timeout guard via Promise.race.
  *
  * @param {import('./types.js').TestPlugin} plugin
  * @param {import('./types.js').TestConfig} config
@@ -73,137 +68,17 @@ async function runPluginWithTimeout(plugin, config) {
 }
 
 /**
- * @param {import('./types.js').TestPlugin} plugin
- * @param {number} timeoutMs
- * @returns {import('./types.js').TestResult}
- */
-function buildTimeoutResult(plugin, timeoutMs) {
-    return {
-        targetName: plugin.name, pluginId: plugin.id,
-        status: 'timeout', downloadSpeedMbps: null,
-        durationMs: timeoutMs, bytesTransferred: 0,
-        errorMessage: `Timed out after ${timeoutMs / 1000} seconds`,
-        timestamp: new Date().toISOString(),
-    };
-}
-
-/**
- * Creates a Worker instance and wires up lifecycle handlers.
+ * Runs all plugins sequentially — one at a time on the main thread.
  *
- * @param {import('./types.js').TestPlugin} plugin
- * @param {import('./types.js').TestConfig} config
- * @param {(result: import('./types.js').TestResult) => void} resolve
- * @returns {{ worker: Worker, timeoutId: number }}
- */
-function setupWorker(plugin, config, resolve) {
-    const worker = new Worker(
-        new URL('../../src/workers/test-worker.js', import.meta.url),
-        { type: 'module' }
-    );
-    const timeoutMs = config.timeoutMs + GRACE_MS;
-    let resolved = false;
-    let timer = null;
-
-    const finish = (result) => {
-        if (resolved) {
-            return;
-        }
-        resolved = true;
-        clearTimeout(timer);
-        worker.terminate();
-        resolve(result);
-    };
-
-    const onTimeout = () => {
-        if (resolved) {
-            return;
-        }
-        resolved = true;
-        worker.terminate();
-        resolve(buildTimeoutResult(plugin, config.timeoutMs));
-    };
-
-    timer = setTimeout(onTimeout, timeoutMs);
-
-    worker.onmessage = (event) => {
-        if (resolved) {
-            return;
-        }
-        const { type, result, error } = event.data;
-        if (type === 'result') {
-            finish(result);
-        } else if (type === 'error') {
-            finish(workerErrorResult(plugin, error));
-        }
-    };
-
-    worker.onerror = () => {
-        if (resolved) {
-            return;
-        }
-        finish({
-            targetName: plugin.name, pluginId: plugin.id,
-            status: 'error', downloadSpeedMbps: null,
-            durationMs: 0, bytesTransferred: 0,
-            errorMessage: 'Internal test error \u2014 worker failed unexpectedly',
-            timestamp: new Date().toISOString(),
-        });
-    };
-
-    worker.postMessage({
-        type: 'run',
-        pluginId: plugin.id,
-        pluginName: plugin.name,
-        config: {
-            timeoutMs: config.timeoutMs,
-            sampleDurationMs: config.sampleDurationMs,
-            adaptivePayload: config.adaptivePayload,
-        },
-    });
-
-    return { worker, timeoutId: timer };
-}
-
-/**
- * @param {import('./types.js').TestPlugin} plugin
- * @param {import('./types.js').TestConfig} config
- * @returns {Promise<import('./types.js').TestResult>}
- */
-function runInWorker(plugin, config) {
-    return new Promise((resolve) => {
-        try {
-            setupWorker(plugin, config, resolve);
-        } catch (error) {
-            resolve({
-                targetName: plugin.name, pluginId: plugin.id,
-                status: 'error', downloadSpeedMbps: null,
-                durationMs: 0, bytesTransferred: 0,
-                errorMessage: `Could not create worker: ${error.message}`,
-                timestamp: new Date().toISOString(),
-            });
-        }
-    });
-}
-
-/**
- * Dispatches plugins to Web Workers.
+ * Sequential execution eliminates the network contention that caused
+ * false-positive throttling signals when plugins competed for bandwidth
+ * in parallel Web Workers.
  *
  * @param {import('./types.js').TestPlugin[]} plugins
  * @param {import('./types.js').TestConfig} config
  * @returns {Promise<import('./types.js').TestResult[]>}
  */
-async function runInWorkers(plugins, config) {
-    return Promise.all(plugins.map((plugin) => runInWorker(plugin, config)));
-}
-
-/**
- * Runs plugins sequentially on the main thread.
- *
- * @param {import('./types.js').TestPlugin[]} plugins
- * @param {import('./types.js').TestConfig} config
- * @returns {Promise<import('./types.js').TestResult[]>}
- */
-async function runSequential(plugins, config) {
+export async function runAll(plugins, config) {
     const results = [];
     for (const plugin of plugins) {
         try {
@@ -214,58 +89,4 @@ async function runSequential(plugins, config) {
         }
     }
     return results;
-}
-
-// === Exports ===
-
-/**
- * Splits plugins into worker-compatible and main-thread-only groups.
- *
- * Plugins default to worker-compatible (workerCompatible !== false).
- * Plugins explicitly flagged `workerCompatible: false` run sequentially
- * on the main thread.
- *
- * @param {import('./types.js').TestPlugin[]} plugins
- * @returns {{ workerPlugins: import('./types.js').TestPlugin[], mainPlugins: import('./types.js').TestPlugin[] }}
- */
-function splitByWorkerCompat(plugins) {
-    const workerPlugins = [];
-    const mainPlugins = [];
-    for (const plugin of plugins) {
-        if (plugin.workerCompatible === false) {
-            mainPlugins.push(plugin);
-        } else {
-            workerPlugins.push(plugin);
-        }
-    }
-    return { workerPlugins, mainPlugins };
-}
-
-/**
- * Runs all registered plugins and returns their results.
- *
- * Worker-compatible plugins run in parallel Web Workers.
- * Main-thread-only plugins (workerCompatible: false) run sequentially
- * on the main thread after workers complete.
- *
- * @param {import('./types.js').TestPlugin[]} plugins
- * @param {import('./types.js').TestConfig} config
- * @returns {Promise<import('./types.js').TestResult[]>}
- */
-export async function runAll(plugins, config) {
-    const supportsWorkers = typeof Worker !== 'undefined';
-    if (supportsWorkers) {
-        const { workerPlugins, mainPlugins } = splitByWorkerCompat(plugins);
-        const results = [];
-        if (workerPlugins.length > 0) {
-            const workerResults = await runInWorkers(workerPlugins, config);
-            results.push(...workerResults);
-        }
-        if (mainPlugins.length > 0) {
-            const mainResults = await runSequential(mainPlugins, config);
-            results.push(...mainResults);
-        }
-        return results;
-    }
-    return runSequential(plugins, config);
 }

@@ -1,5 +1,12 @@
 /**
- * jsDelivr CDN manufactured speed test plugin.
+ * jsDelivr CDN speed test plugin.
+ *
+ * Downloads large npm package files from cdn.jsdelivr.net — the
+ * world's largest open-source CDN with CORS + Timing-Allow-Origin
+ * headers enabled on all assets.
+ *
+ * Uses 3 MB to 32 MB files for meaningful throughput measurement
+ * on high-speed connections.
  *
  * @module plugins/jsdelivr
  */
@@ -12,13 +19,21 @@ const WARMUP_DURATION_MS = 1000;
 const DEFAULT_TIMEOUT_MS = 30000;
 const FETCH_TIMEOUT_MS = 15000;
 
+/**
+ * Large npm package assets served by jsDelivr.
+ * All have CORS + Timing-Allow-Origin headers.
+ *
+ * - @ffmpeg/core WASM binary: ~32 MB
+ * - @tensorflow/tfjs minified bundle: ~1.5 MB
+ * - three.js build: ~670 KB (fallback when larger files succeed)
+ */
 const JSDELIVR_URLS = [
-    'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',
-    'https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js',
-    'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
+    'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm',
+    'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js',
+    'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js',
 ];
 
-// === Helper functions (declared first so they hoist for no-use-before-define) ===
+// === Helper functions ===
 
 /** @returns {{bytes: number, speedMbps: number, durationMs: number}} */
 function zeroResult() {
@@ -26,6 +41,11 @@ function zeroResult() {
 }
 
 /**
+ * Downloads a file from jsDelivr and measures throughput.
+ *
+ * Uses Resource Timing API with prefix matching for reliable byte counts
+ * regardless of cache-busting query parameter variations.
+ *
  * @param {string} url
  * @param {number} timeoutMs
  * @returns {Promise<{bytes: number, speedMbps: number, durationMs: number}>}
@@ -40,19 +60,34 @@ async function downloadMeasure(url, timeoutMs) {
     try {
         const fetchStart = performance.now();
         const response = await fetch(url, {
-            signal: controller.signal, cache: 'no-store',
+            signal: controller.signal,
+            cache: 'no-store',
         });
         if (!response.ok) {
             return zeroResult();
         }
 
+        // Capture Content-Length before reading body
+        const cl = response.headers.get('content-length');
+        const contentLength = cl ? parseInt(cl, 10) : 0;
+
         await response.blob();
         const durationMs = performance.now() - fetchStart;
+
+        // Try Resource Timing first, fall back to Content-Length header
+        const urlPrefix = url.split('?')[0];
         let bytes = 0;
-        const entries = performance.getEntriesByName(url);
-        if (entries.length > 0) {
-            const entry = entries[entries.length - 1];
-            bytes = entry.transferSize || entry.encodedBodySize || 0;
+        const entries = performance.getEntriesByType('resource');
+        for (const entry of entries) {
+            if (entry.name.startsWith(urlPrefix)) {
+                bytes = entry.transferSize
+                    || entry.encodedBodySize
+                    || contentLength;
+                break;
+            }
+        }
+        if (bytes === 0) {
+            bytes = contentLength;
         }
         if (bytes === 0) {
             return zeroResult();
@@ -68,19 +103,21 @@ async function downloadMeasure(url, timeoutMs) {
 }
 
 /**
- * @param {'success'|'error'} status
- * @param {number|null} speedMbps
- * @param {number} durationMs
- * @param {number} bytesTransferred
- * @param {string|null} errorMessage
+ * @param {{ status: 'success'|'error', speedMbps: number|null,
+ *   durationMs: number, bytesTransferred: number, errorMessage: string|null
+ * }} opts
  * @returns {import('../lib/types.js').TestResult}
  */
 function buildResult({ status, speedMbps, durationMs, bytesTransferred,
     errorMessage }) {
     return {
-        targetName: 'jsDelivr CDN', pluginId: 'jsdelivr',
-        status, downloadSpeedMbps: speedMbps,
-        durationMs, bytesTransferred, errorMessage,
+        targetName: 'jsDelivr CDN',
+        pluginId: 'jsdelivr',
+        status,
+        downloadSpeedMbps: speedMbps,
+        durationMs,
+        bytesTransferred,
+        errorMessage,
         timestamp: new Date().toISOString(),
     };
 }
@@ -127,7 +164,8 @@ const jsdelivrPlugin = {
             });
         } catch (error) {
             return buildResult({
-                status: 'error', speedMbps: null,
+                status: 'error',
+                speedMbps: null,
                 durationMs: Math.round(performance.now() - startTime),
                 bytesTransferred: totalBytes,
                 errorMessage: error.message || 'Unknown error',

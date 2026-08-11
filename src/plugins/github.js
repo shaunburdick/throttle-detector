@@ -16,8 +16,8 @@ import { bytesToMbps, trimmedMean } from '../lib/utils.js';
 
 // === URLs ===
 
-/** Primary: our own repo's 10 MiB test asset. Always available. */
-const PRIMARY_URL = 'https://raw.githubusercontent.com/shaunburdick/throttle-detector/main/test-assets/10mb.bin';
+/** Primary: our own repo's 25 MiB test asset. Always available. */
+const PRIMARY_URL = 'https://raw.githubusercontent.com/shaunburdick/throttle-detector/main/test-assets/25mb.bin';
 
 /**
  * Fallback: a larger file from a well-known public repo (Three.js).

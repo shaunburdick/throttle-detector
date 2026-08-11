@@ -9,8 +9,8 @@ Speedtest.net might only get 50 Mbps from Netflix's servers -- but a single
 speed test will never reveal this.
 
 **How this tool helps**: It runs speed tests against four different service
-origins (Cloudflare, Netflix/Fast.com, Google CDN, and jsDelivr CDN) in
-parallel, then flags significant discrepancies. A large gap between a
+origins (Cloudflare, Netflix/Fast.com, Google CDN, and jsDelivr CDN) sequentially,
+then flags significant discrepancies. A large gap between a
 service-specific test and the baseline is a strong signal that your ISP is
 selectively throttling that service.
 
@@ -43,10 +43,11 @@ where each test target is a self-contained module.
 
 1. **Plugin registration**: Each plugin (test target) self-registers on import
    by calling `registerPlugin()` with its metadata and a `run()` function.
-2. **Test runner**: Loads all registered plugins and dispatches each one to a
-   dedicated **[Web Worker](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API)**
-   for parallel execution. Falls back to sequential main-thread execution if
-   Workers are not supported.
+2. **Test runner**: Loads all registered plugins and executes each one sequentially
+   on the main thread with `Promise.race()` timeout guards. Sequential execution
+   ensures each plugin gets full access to the network pipe, producing accurate
+   measurements (parallel execution was found to cause false-positive throttling
+   by splitting bandwidth across plugins).
 3. **Time-based sampling**: Each plugin downloads resources continuously for
    10 seconds (`sampleDurationMs`), measuring throughput via the
    **[Performance API](https://developer.mozilla.org/en-US/docs/Web/API/Performance_API)**
@@ -70,7 +71,7 @@ where each test target is a self-contained module.
 | Language | Vanilla JavaScript (ES2020+) |
 | Modules | Native ES modules (`import`/`export`) |
 | Styling | CSS Custom Properties, no preprocessor |
-| Parallelism | Web Workers |
+| Parallelism | Sequential main-thread with `Promise.race()` timeout guards |
 | Timing | Performance API + Resource Timing |
 | Persistence | localStorage |
 | Testing | Vitest + jsdom |
@@ -88,7 +89,7 @@ throttle-detector/
 │   ├── lib/                    # Core modules
 │   │   ├── types.js            # JSDoc typedefs (TestPlugin, TestResult, etc.)
 │   │   ├── plugin-registry.js  # Central plugin registration and discovery
-│   │   ├── test-runner.js      # Worker dispatch or sequential fallback
+│   │   ├── test-runner.js      # Sequential dispatch with Promise.race() guards
 │   │   ├── results-analyzer.js # Discrepancy computation and verdict generation
 │   │   ├── results-presenter.js# HTML table and JSON output rendering
 │   │   ├── history-manager.js  # localStorage persistence with eviction
@@ -99,8 +100,6 @@ throttle-detector/
 │   │   ├── fast-com.js         # Netflix Open Connect CDN (streaming)
 │   │   ├── google-cdn.js       # Google CDN via gstatic images
 │   │   └── jsdelivr.js         # jsDelivr global CDN
-│   └── workers/
-│       └── test-worker.js      # Generic Web Worker executor for plugins
 ├── tests/
 │   ├── unit/                   # Isolated module tests
 │   ├── integration/            # End-to-end flow tests
@@ -299,10 +298,10 @@ No build step, no CI/CD pipeline required.
 - Safari (latest 2 versions)
 - Edge (latest 2 versions)
 
-**Graceful degradation**: If Web Workers are unavailable, tests run sequentially
-on the main thread with a notice. If the Performance API is missing, the
-application displays an unsupported-browser message. If localStorage is
-unavailable or full, results still display for the current session and a
+**Graceful degradation**: The application does not require Web Workers — all
+tests run sequentially on the main thread by design. If the Performance API is
+missing, the application displays an unsupported-browser message. If localStorage
+is unavailable or full, results still display for the current session and a
 non-blocking warning is shown.
 
 ## License

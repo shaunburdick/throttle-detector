@@ -39,10 +39,6 @@ function detectBrowserSupport() {
             + 'needed for speed measurements. '
             + 'Please try Chrome, Firefox, Safari, or Edge.');
     }
-    if (typeof Worker === 'undefined') {
-        warnings.push('Your browser does not support parallel testing. '
-            + 'Tests will run one at a time, which may take longer.');
-    }
     try {
         const k = '__td_storage_test__';
         localStorage.setItem(k, k);
@@ -191,10 +187,6 @@ async function startTest() {
     const config = { timeoutMs: 30000, sampleDurationMs: 10000,
         adaptivePayload: true };
     const extraWarnings = [];
-    if (typeof Worker === 'undefined') {
-        extraWarnings.push('Tests ran sequentially — parallel testing '
-            + 'not supported by this browser');
-    }
 
     try {
         const results = await runAll(plugins, config);

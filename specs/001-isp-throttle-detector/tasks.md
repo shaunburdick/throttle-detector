@@ -59,8 +59,8 @@
 
 ### Implementation for User Story 1
 
-- [x] T019 [US1] Create `src/lib/test-runner.js` — implements TestRunner: `runAll(plugins, config) → Promise<TestResult[]>`, Web Worker dispatch, abort/timeout, sequential fallback, per `contracts/worker-message-format.md`
-- [x] T020 [US1] Create `src/workers/test-worker.js` — Web Worker executor: receives plugin code + config, executes `run()`, posts result/error back, handles abort signal via MessagePort, per `contracts/worker-message-format.md`
+- [x] T019 [US1] Create `src/lib/test-runner.js` — implements TestRunner: `runAll(plugins, config) → Promise<TestResult[]>`, sequential main-thread execution with `Promise.race()` timeout guards, abort/timeout, per `contracts/plugin-interface.md` (Worker dispatch superseded — see v1.2.0 amendment)
+- [x] T020 [US1] ~~Create `src/workers/test-worker.js` — Web Worker executor~~ **SUPERSEDED (v1.2.0)**: Web Workers removed due to false-positive throttling from parallel bandwidth contention. Plugins now execute sequentially on the main thread. File deleted.
 - [x] T021 [US1] Create `src/lib/results-analyzer.js` — implements `analyzeResults(results) → { baseline, discrepancies, verdict }`, baseline selection logic, discrepancy calculation, classification thresholds (≤15% normal, 15-30% possible, >30% strong)
 - [x] T022 [US1] Create `src/lib/results-presenter.js` — implements `presentHtml(run)`, `presentJson(run)`, generates comparison table with proper `<table>`, `<caption>`, `<thead>`, `<tbody>`, `<th scope>`, color-coded rows with text labels
 - [x] T023 [US1] Create `src/lib/ui-manager.js` — UI state machine: `initial → running → complete → error-full`, button enable/disable, progress bar with `role="progressbar"` + aria attributes, ARIA live region for status updates
@@ -69,7 +69,7 @@
 - [x] T026 [US1] Create `src/plugins/google-cdn.js` — Google CDN manufactured test: attempt fetch() first, fall back to `new Image()` + Performance API, adaptive payload
 - [x] T027 [US1] Create `src/plugins/jsdelivr.js` — jsDelivr CDN manufactured test: download large npm package file from `cdn.jsdelivr.net`, adaptive payload, full CORS support
 - [x] T028 [US1] Create `src/app.js` — entry point: import plugins (triggers registration), detect `?format=json`, initialize UI or JSON mode, wire up "Run Test" button → TestRunner → Analyzer → Presenter pipeline, browser API detection (FR-031)
-- [x] T029 [US1] Implement all 10 edge cases from spec: all tests fail, no Web Workers, CORS blocked, very fast connection, very slow connection, missing Performance API, localStorage full, rapid clicks, empty history, JSON mode no data
+- [x] T029 [US1] Implement all 10 edge cases from spec: all tests fail, CORS blocked, very fast connection, very slow connection, missing Performance API, localStorage full, rapid clicks, empty history, JSON mode no data (Web Workers edge case removed — sequential execution is the default, no fallback needed)
 
 **Checkpoint**: At this point, User Story 1 is fully functional — a user can run a differential speed test and see results with discrepancy analysis.
 
@@ -214,3 +214,4 @@
 - Stop at any checkpoint to validate story independently
 - Edge cases (T029) span all 10 documented cases from spec — implement incrementally as each piece comes together
 - **Time-based sampling**: All plugins use `sampleDurationMs` (default 10s) instead of byte caps. Plugins download chunks of increasing size until duration elapses, then average all samples. See `research.md` §4 for algorithm details. The contracts and data-model have been updated to reflect this change.
+- **Sequential execution (v1.2.0)**: Plugins run sequentially on the main thread with `Promise.race()` timeout guards. Web Workers were removed after parallel execution caused false-positive throttling signals (bandwidth contention). See `constitution.md` amendment v1.2.0 and `research.md` §2.0.

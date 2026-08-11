@@ -41,7 +41,7 @@ npx vite
 
 Then open `http://localhost:8000` in your browser.
 
-> **Note on file:// protocol**: The app can work when opened directly (`file:///path/to/index.html`), but some browser features (CORS, Web Workers with module imports) may behave differently. An HTTP server is recommended.
+> **Note on file:// protocol**: The app can work when opened directly (`file:///path/to/index.html`), but some browser features (CORS, ES module imports) may behave differently. An HTTP server is recommended.
 
 ### Project Structure
 
@@ -63,8 +63,6 @@ throttle-detector/
 │   │   ├── cloudflare.js
 │   │   ├── google-cdn.js
 │   │   └── jsdelivr.js
-│   ├── workers/           # Web Worker scripts
-│   │   └── test-worker.js
 │   └── styles/
 │       └── main.css
 ├── tests/
@@ -153,9 +151,8 @@ ESLint uses `eslint-config-shaunburdick`. **Zero errors, zero warnings** — no 
 ### Flow 5: Error States
 
 1. **All tests fail**: Disconnect from internet, run test → verify "Unable to determine" message
-2. **Web Workers unsupported**: Use an ancient browser or mock → verify sequential fallback notice
-3. **localStorage disabled**: In devtools → Application → clear site data, block storage → run test → verify warning banner
-4. **Rapid clicks**: Click "Run Test" rapidly → verify button disables, only one run starts
+2. **localStorage disabled**: In devtools → Application → clear site data, block storage → run test → verify warning banner
+3. **Rapid clicks**: Click "Run Test" rapidly → verify button disables, only one run starts
 
 ### Flow 6: Accessibility
 
@@ -188,4 +185,3 @@ If GitHub Pages is configured to serve from the `main` branch's `/ (root)` or `/
 | All CDN tests show 0 Mbps | Network offline | Check internet connection. |
 | Tests complete too quickly | Payload too small for fast connection | Adaptive payload should scale up — check `adaptivePayload` config. |
 | "localStorage is full" | Too many history entries | Clear history or increase `maxHistoryEntries` in `history-manager.js`. |
-| Worker errors in console | Plugin code not serializable | Check for closure captures in `run()`. All deps must be defined within function body. |
