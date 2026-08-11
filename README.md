@@ -24,7 +24,7 @@ npm install
 # Serve locally on http://localhost:8000
 npm start
 
-# Run the test suite (168 tests)
+# Run the test suite (172 tests)
 npm test
 
 # Run linting
@@ -225,7 +225,7 @@ instead.
 
 ```bash
 # Run all tests
-npm test                # vitest run (168 tests across 8 files)
+npm test                # vitest run (172 tests across 8 files)
 
 # Watch mode (re-runs on file changes)
 npm run test:watch
