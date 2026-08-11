@@ -677,8 +677,15 @@ button.history-entry:focus-visible {
 }
 
 .test-status-icon--running {
-    color: var(--color-primary);
-    animation: spin 1s linear infinite;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin: 2px 0;
+    vertical-align: middle;
+    border: 2px solid var(--color-border-light);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
 }
 
 @keyframes spin {

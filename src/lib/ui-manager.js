@@ -168,7 +168,7 @@ export function markPluginRunning(pluginId) {
     if (icon) {
         icon.classList.remove('test-status-icon--queued');
         icon.classList.add('test-status-icon--running');
-        icon.textContent = '\u27F3'; // ⟳ spinner character
+        icon.textContent = '';
     }
 
     // Update the label
