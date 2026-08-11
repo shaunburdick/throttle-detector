@@ -23,6 +23,8 @@ import {
     buildErrorHtml, announce,
 } from './lib/ui-manager.js';
 
+const JSON_EXPORT_KEY = 'throttle-detector-last-result';
+
 // ===== Helpers =====
 
 /** @returns {boolean} */
@@ -227,6 +229,17 @@ async function startTest() {
             onPluginStart: (pluginId) => markPluginRunning(pluginId),
         });
         const testRun = finalizeTestRun(results, extraWarnings);
+
+        // Store JSON result for in-browser export via ?format=json
+        try {
+            sessionStorage.setItem(
+                JSON_EXPORT_KEY, presentJson(testRun)
+            );
+        } catch {
+            // sessionStorage unavailable — non-critical
+            void 0;
+        }
+
         await persistAndRefreshHistory(testRun);
     } catch (error) {
         showErrorState([`Test run failed: ${error.message || 'Unknown error'}`]);
@@ -367,6 +380,19 @@ function initTheme() {
 }
 
 async function bootstrapJsonMode() {
+    // Check sessionStorage first for the last result (in-browser export path)
+    try {
+        const stored = sessionStorage.getItem(JSON_EXPORT_KEY);
+        if (stored) {
+            sessionStorage.removeItem(JSON_EXPORT_KEY);
+            document.body.textContent = stored;
+            return;
+        }
+    } catch {
+        // sessionStorage unavailable — fall through to history
+        void 0;
+    }
+
     try {
         const history = loadAll();
         if (history.length > 0) {

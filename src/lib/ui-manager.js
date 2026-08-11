@@ -4,7 +4,7 @@
  * @module lib/ui-manager
  */
 
-import { presentHtml, presentJson, presentPluginChecklist } from './results-presenter.js';
+import { presentHtml, presentPluginChecklist } from './results-presenter.js';
 import { escapeHtml, announce as _announce } from './dom-utils.js';
 import { getPlugins } from './plugin-registry.js';
 import { renderHistory as renderHistoryImpl } from './history-ui.js';
@@ -270,35 +270,18 @@ export function setResults(run) {
 
     const checklistHtml = presentPluginChecklist(lastPlugins.length > 0 ? lastPlugins : getPlugins(), false);
 
-    // Generate export filename timestamp: YYYYMMDD-HHmmss
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hour = String(now.getHours()).padStart(2, '0');
-    const minute = String(now.getMinutes()).padStart(2, '0');
-    const second = String(now.getSeconds()).padStart(2, '0');
-    const exportFilename = `throttle-test-${year}${month}${day}-${hour}${minute}${second}.json`;
-
     const exportHtml = '<div class="export-section">'
         + '<button class="btn btn-primary export-json-btn"'
-        + ' aria-label="Download test results as JSON file">'
+        + ' aria-label="View test results as JSON">'
         + 'Export JSON</button></div>';
 
     area.innerHTML = checklistHtml + presentHtml(run) + exportHtml;
 
-    // Wire export button click handler
+    // Wire export button — navigates to ?format=json for in-browser display
     const exportBtn = area.querySelector('.export-json-btn');
     if (exportBtn) {
         exportBtn.addEventListener('click', () => {
-            const json = presentJson(run);
-            const blob = new Blob([json], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const anchor = document.createElement('a');
-            anchor.href = url;
-            anchor.download = exportFilename;
-            anchor.click();
-            URL.revokeObjectURL(url);
+            window.location.href = '/?format=json';
         });
     }
 
