@@ -14,7 +14,6 @@ Every plugin module MUST export a single object conforming to this shape:
   name: string,
   description: string,
   category: 'streaming' | 'cdn' | 'manufactured',
-  workerCompatible?: boolean,  // default true; set false for DOM-only APIs
   run(config: TestConfig): Promise<TestResult>
 }
 ```
@@ -27,8 +26,7 @@ Every plugin module MUST export a single object conforming to this shape:
 | `name` | `string` | ✅ Yes | Human-readable. Max 50 chars. Displayed in UI. Example: `'Fast.com (Netflix)'` |
 | `description` | `string` | ✅ Yes | One-line, max 120 chars. Shown in tooltips/info. Example: `'Download speed from Netflix Open Connect CDN'` |
 | `category` | `'streaming' \| 'cdn' \| 'manufactured'` | ✅ Yes | Used for grouping in results table. `streaming`: streaming service infrastructure. `cdn`: general-purpose CDN. `manufactured`: known-file downloads from specific origins |
-| `workerCompatible` | `boolean` | No | **Default: `true`**. Set to `false` if the plugin uses DOM APIs that don't exist in Web Workers (e.g., `Image` for CORS fallback). Plugins with `workerCompatible: false` run sequentially on the main thread instead of in workers. |
-| `run` | `(config: TestConfig) => Promise<TestResult>` | ✅ Yes | The test execution function. Must be async. Must handle all errors internally. Must NOT throw — errors returned as TestResult with status 'error' |
+| `run` | `(config: TestConfig) => Promise<TestResult>` | ✅ Yes | The test execution function. Must be async. Must handle all errors internally. Must NOT throw — errors returned as TestResult with status 'error'. Runs on the main thread with full access to all browser APIs. |
 
 ### run() Method Contract
 
@@ -46,17 +44,13 @@ Every plugin module MUST export a single object conforming to this shape:
 4. Honor the AbortSignal (check `signal.aborted` periodically, abort fetch on signal)
 5. Return within `timeoutMs` — the runner will enforce this externally, but plugins should cooperate
 
-**Self-Containment**: The `run()` function is serialized (`.toString()`) and sent to a Web Worker. Therefore:
-1. No closure captures over module-level variables
-2. All dependencies must be imported/included within the function body or passed via config
-3. Cannot reference `this` (function is called standalone, not as method)
-4. Can use built-in browser APIs (fetch, performance, AbortController, Image, etc.)
-5. Plugins using DOM-only APIs (like `Image`) should set `workerCompatible: false` to run on the main thread instead
+**Self-Containment**: The `run()` function runs on the main thread, so it can:
+1. Reference module-level variables and imports
+2. Use `this` (when called as a method on the plugin object)
+3. Use all built-in browser APIs (fetch, performance, AbortController, Image, DOM, etc.)
+4. Access closure-scoped state from the plugin module
 
-**Thread Safety**: Plugins run in isolation (one per Worker). They must not:
-1. Mutate shared state (localStorage, DOM)
-2. Communicate with other plugins
-3. Assume any execution order relative to other plugins
+**Execution Order**: Plugins run sequentially in registration order. Each plugin completes (or times out) before the next begins. This ensures each test gets full access to the available bandwidth for accurate measurements.
 
 ### TestResult Shape (Return Value)
 
@@ -93,15 +87,15 @@ const myTargetPlugin = {
 
     try {
       // Phase 1: Probe with small payload
-      const probeResult = await this._downloadAndMeasure(
+      const probeResult = await downloadAndMeasure(
         'https://my-target.example.com/test?size=128KB',
         128 * 1024
       );
       totalBytes += probeResult.bytes;
 
       // Phase 2: Scale based on probe result
-      const payloadSize = this._determinePayloadSize(probeResult.speedMbps, config);
-      const finalResult = await this._downloadAndMeasure(
+      const payloadSize = determinePayloadSize(probeResult.speedMbps, config);
+      const finalResult = await downloadAndMeasure(
         `https://my-target.example.com/test?size=${payloadSize}`,
         payloadSize
       );
@@ -135,20 +129,16 @@ const myTargetPlugin = {
     }
   },
 
-  // Private helper (not serialized to Worker — must be defined inside run()
-  // or inlined)
-  _downloadAndMeasure(url, expectedBytes) { /* ... */ },
-  _determinePayloadSize(probeSpeed, config) { /* ... */ }
+  // Helper functions (can be module-level since no Worker serialization needed)
 };
+
+function downloadAndMeasure(url, expectedBytes) { /* ... */ }
+function determinePayloadSize(probeSpeed, config) { /* ... */ }
 
 export default myTargetPlugin;
 ```
 
-**Note**: In practice, helper methods like `_downloadAndMeasure` cannot be on the plugin object (they won't survive serialization to Worker). These must be either:
-1. Defined as local functions inside `run()`, or
-2. Defined in a shared utility and copy-pasted into the plugin function body during build
-
-The recommended pattern for plugins is to define all logic within the `run()` function or as local helper functions inside it.
+**Note**: Since plugins run on the main thread (no Worker serialization), helper functions can be module-level functions or methods on the plugin object. No restrictions on closure captures or `this` references.
 
 ## Registration Contract
 

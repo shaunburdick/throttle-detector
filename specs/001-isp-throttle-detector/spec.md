@@ -20,7 +20,7 @@ A user visits the application in their browser, clicks "Run Test", and watches a
 
 **Acceptance Scenarios**:
 
-1. **Given** the application is loaded and no test has been run, **When** the user clicks "Run Test", **Then** all configured test targets begin executing in parallel and a progress indicator shows each target's status (idle → running → complete/error).
+1. **Given** the application is loaded and no test has been run, **When** the user clicks "Run Test", **Then** all configured test targets begin executing sequentially and a progress indicator shows each target's status (idle → running → complete/error).
 2. **Given** all tests have completed successfully, **When** results are displayed, **Then** the user sees each target's name, measured download speed in Mbps, and whether a significant discrepancy exists relative to the baseline (generic speed test).
 3. **Given** one test target fails (e.g., CORS rejection, timeout), **When** the test run completes, **Then** the failed target shows a plain-language error message instead of a speed measurement, and the other results are still displayed.
 4. **Given** the user runs a differential test comparing fast.com and Speedtest.net, **When** fast.com reports 50 Mbps and Speedtest.net reports 200 Mbps, **Then** the results table highlights the fast.com row with a "throttling likely" indicator and explains that Netflix traffic may be affected.
@@ -80,7 +80,7 @@ A user who is not a network engineer looks at the results and wonders "so, is my
 ### Edge Cases
 
 - **All tests fail**: The UI displays an error state explaining that no tests completed, lists each failure reason, and suggests checking internet connectivity. The JSON mode returns an error object with `status: "error"` and a `failures` array.
-- **Browser doesn't support Web Workers**: The test runner falls back to sequential execution on the main thread with a notice: "Your browser doesn't support parallel testing. Tests will run one at a time, which may take longer."
+- **Browser doesn't support Web Workers**: All tests run sequentially on the main thread by design — no fallback needed. The application does not require Web Workers.
 - **CORS blocks a fetch() request**: The test module automatically tries the fallback strategy (e.g., `new Image()` + Performance API resource timing). If both fail, the target is marked as failed with the reason "CORS restricted — could not measure this target".
 - **User has a very fast connection** (>500 Mbps): The test adjusts the download payload size upward to ensure accurate measurement, up to a configured maximum (prevents tests from completing in <1s, which reduces accuracy). The payload is capped to avoid excessive data usage on metered connections.
 - **User has a very slow connection** (<1 Mbps): The test uses a smaller initial payload to avoid timeouts. If even the small payload takes >30 seconds, the target is marked as timed out.
@@ -96,7 +96,7 @@ A user who is not a network engineer looks at the results and wonders "so, is my
 
 #### Core Orchestration
 
-- **FR-001**: The application MUST provide a test runner that loads all registered test plugin modules, executes them concurrently (via Web Workers where supported), collects results, and presents them to the user.
+- **FR-001**: The application MUST provide a test runner that loads all registered test plugin modules, executes them sequentially on the main thread with `Promise.race()` timeout guards, collects results, and presents them to the user.
 - **FR-002**: The application MUST support both managed tests (fast.com, Speedtest.net, etc.) and manufactured tests (downloads from known CDN origins) through the same plugin interface.
 - **FR-003**: The test runner MUST disable the "Run Test" button during an active test run and re-enable it upon completion or failure.
 
@@ -147,7 +147,7 @@ A user who is not a network engineer looks at the results and wonders "so, is my
 #### Error Handling
 
 - **FR-030**: Every test plugin MUST handle its own failures (CORS rejection, timeout, network error, rate limiting) without crashing the test runner, the UI, or affecting other plugins.
-- **FR-031**: The application MUST detect missing browser APIs (Performance API, Web Workers, localStorage) at startup and display a clear, actionable message to the user before any test can be run.
+- **FR-031**: The application MUST detect missing browser APIs (Performance API, localStorage) at startup and display a clear, actionable message to the user before any test can be run.
 - **FR-032**: All `fetch()` calls MUST include an `AbortController` with a timeout. Requests that exceed `timeoutMs` MUST be aborted and the target marked as timed out.
 
 #### UI States
@@ -191,6 +191,7 @@ A user who is not a network engineer looks at the results and wonders "so, is my
 - Mobile browsers are supported via responsive CSS, but mobile-specific features (pull-to-refresh, touch gestures) are out of scope for MVP.
 - A single user per browser session. No multi-user support, no authentication, no cloud sync.
 - The application is deployed as static files on GitHub Pages via the `main` branch. No CI/CD pipeline is required for MVP but may be added later.
+- Tests run sequentially on the main thread (not in Web Workers). This architectural decision was made after discovering that parallel execution via Web Workers caused false-positive throttling signals — plugins competing for the same bandwidth artificially lowered individual speed measurements. Sequential execution ensures each plugin gets full access to the network pipe for accurate results.
 
 ## Out of Scope
 

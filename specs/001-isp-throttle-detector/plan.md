@@ -8,7 +8,7 @@
 
 A pure client-side web application that detects ISP throttling by running differential speed tests against multiple service origins (Netflix CDN, Cloudflare, Google CDN, jsDelivr) and comparing results. The core insight: ISPs often throttle specific services (Netflix, YouTube) while leaving generic speed tests untouched. A significant discrepancy between e.g. the fast.com measurement (Netflix infrastructure) and the Cloudflare baseline is a strong throttling signal.
 
-The application follows a plugin architecture — each test target is a self-contained module conforming to a common interface. The test runner loads all registered plugins, dispatches them via Web Workers for parallel execution, collects results, performs discrepancy analysis, and presents findings in an accessible comparison table. A `?format=json` URL parameter switches to machine-readable JSON output.
+The application follows a plugin architecture — each test target is a self-contained module conforming to a common interface. The test runner loads all registered plugins and executes them sequentially on the main thread with `Promise.race()` timeout guards. Sequential execution ensures each plugin gets full access to the network pipe for accurate measurements (parallel execution caused false-positive throttling by splitting bandwidth). Results are collected, discrepancy analysis performed, and findings presented in an accessible comparison table. A `?format=json` URL parameter switches to machine-readable JSON output.
 
 ## Technical Context
 
@@ -48,7 +48,7 @@ The application follows a plugin architecture — each test target is a self-con
 | III. Accessibility-First UI | ✅ PASS | Semantic HTML (`<table>`, `<caption>`, `<th scope>`), ARIA live regions, `role="progressbar"`, keyboard navigation, WCAG 2.2 AA color contrast (4.5:1 text, 3:1 large text/UI). Color never sole indicator — text labels and icons accompany color-coding. |
 | IV. Dual-Mode Output | ✅ PASS | Default = interactive dashboard. `?format=json` = JSON document. Same underlying data via `ResultsPresenter` abstraction. |
 | V. Lightweight & Minimal Dependencies | ✅ PASS | Zero runtime dependencies. Vanilla JS + CSS Custom Properties. No framework (SPA complexity does not warrant Preact). Expected page weight ~60KB. |
-| VI. Graceful Degradation | ✅ PASS | Each plugin handles own errors via try/catch. Partial results valid. Web Worker → sequential fallback. Performance API → unsupported browser message. localStorage → in-memory-only warning. CORS → `new Image()` fallback. |
+| VI. Graceful Degradation | ✅ PASS | Each plugin handles own errors via try/catch. Partial results valid. Sequential execution with `Promise.race()` timeout guards prevents hangs. Performance API → unsupported browser message. localStorage → in-memory-only warning. CORS → `new Image()` fallback. |
 
 **Complexity Tracking**: No violations. All constitution principles satisfied without exceptions.
 
@@ -71,10 +71,10 @@ The application follows a plugin architecture — each test target is a self-con
 │  │ Manager │ │ Manager  │ │  (Orchestrator)  │          │
 │  │         │ │          │ │                  │          │
 │  │ - DOM   │ │ - CRUD   │ │ - Load plugins   │          │
-│  │   render│ │ - Evict  │ │ - Dispatch via   │          │
-│  │ - States│ │ - Persist│ │   Web Workers    │          │
-│  │ - Events│ │          │ │ - Collect results│          │
-│  │ - A11y  │ │          │ │ - Abort/timeout  │          │
+│  │   render│ │ - Evict  │ │ - Run sequentially│          │
+│  │ - States│ │ - Persist│ │ - Collect results│          │
+│  │ - Events│ │          │ │ - Abort/timeout  │          │
+│  │ - A11y  │ │          │ │ - Timeout guards │          │
 │  └────┬─────┘ └────┬─────┘ └──┬──────────────┘          │
 │       │            │           │                          │
 │  ┌────▼────────────▼───────────▼──────────────────┐     │
@@ -86,21 +86,9 @@ The application follows a plugin architecture — each test target is a self-con
 │                                                            │
 │  ┌──────────────────────────────────────────────────┐    │
 │  │              ResultsPresenter                     │    │
-│  │  - HTML mode: renders comparison table + verdict │    │
-│  │  - JSON mode: serializes to JSON document        │    │
+│  │  - HTML mode: renders comparison table + verdict  │    │
+│  │  - JSON mode: serializes to JSON document         │    │
 │  └──────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│                  Web Worker Pool                          │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
-│  │ fast.com │ │Cloudflare│ │  Google  │ │ jsDelivr │   │
-│  │ Plugin   │ │ Plugin   │ │  Plugin  │ │ Plugin   │   │
-│  │          │ │          │ │          │ │          │   │
-│  │ Token→  │ │ fetch→   │ │ fetch→   │ │ fetch→   │   │
-│  │ URLs→   │ │ measure  │ │ measure  │ │ measure  │   │
-│  │ measure  │ │          │ │ or Image │ │          │   │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -111,31 +99,29 @@ The application follows a plugin architecture — each test target is a self-con
    │
 2. TestRunner.runAll() called
    │
-3. For each registered plugin:
-   ├─ Create Web Worker (or fallback to sync)
-   ├─ Post { type: 'run', config: TestConfig }
+3. For each registered plugin (sequential):
+   ├─ Start Promise.race([plugin.run(config), timeout])
+   ├─ Plugin executes on main thread:
+   │   ├─ Adaptive payload sizing
+   │   ├─ fetch() with AbortController
+   │   ├─ Measure via performance.now() / Resource Timing
+   │   └─ Fallback to new Image() if CORS blocks fetch
+   ├─ Timeout guard aborts if plugin exceeds timeoutMs
+   └─ Collect result (success or error)
    │
-4. Worker executes plugin:
-   ├─ Adaptive payload sizing
-   ├─ fetch() with AbortController
-   ├─ Measure via performance.now() / Resource Timing
-   ├─ Fallback to new Image() if CORS blocks fetch
-   ├─ Post back: { type: 'result', result: TestResult }
-   │             or { type: 'error', error: string }
-   │
-5. TestRunner collects all results
-   │
-6. ResultsAnalyzer processes:
-   ├─ Identify baseline (Cloudflare - fastest result)
-   ├─ Calculate % deviation for each target
-   ├─ Classify: ≤15% normal, 15-30% possible, >30% strong
-   └─ Generate plain-language verdict
-   │
-7. ResultsPresenter renders:
-   ├─ HTML mode: comparison table + verdict + history
-   └─ JSON mode: structured JSON document
-   │
-8. HistoryManager.persist(testRun)
+4. TestRunner collects all results
+    │
+5. ResultsAnalyzer processes:
+    ├─ Identify baseline (Cloudflare - fastest result)
+    ├─ Calculate % deviation for each target
+    ├─ Classify: ≤15% normal, 15-30% possible, >30% strong
+    └─ Generate plain-language verdict
+    │
+6. ResultsPresenter renders:
+    ├─ HTML mode: comparison table + verdict + history
+    └─ JSON mode: structured JSON document
+    │
+7. HistoryManager.persist(testRun)
 ```
 
 ### Routing / Mode Selection
@@ -155,12 +141,12 @@ Mode detection happens in `app.js` at startup, before any module initialization.
 ```text
 specs/001-isp-throttle-detector/
 ├── plan.md              # This file
-├── research.md          # CORS research, Web Worker feasibility, API analysis
+├── research.md          # CORS research, serial execution rationale, API analysis
 ├── data-model.md        # TypeScript interfaces for all entities
 ├── quickstart.md        # Setup, run, test instructions
 ├── contracts/           # Internal API contracts
 │   ├── plugin-interface.md
-│   ├── worker-message-format.md
+│   ├── worker-message-format.md  # OBSOLETE — preserved for historical reference
 │   └── test-module-registration.md
 └── tasks.md             # Phase 5 output
 ```
@@ -171,7 +157,7 @@ specs/001-isp-throttle-detector/
 src/
 ├── app.js                    # Entry point: mode detection, init, bootstrap
 ├── lib/
-│   ├── test-runner.js        # Plugin loading, dispatch, result collection
+│   ├── test-runner.js        # Plugin loading, sequential dispatch, result collection
 │   ├── results-analyzer.js   # Discrepancy calculation, verdict generation
 │   ├── results-presenter.js  # Dual-mode output (HTML table + JSON)
 │   ├── history-manager.js    # localStorage CRUD, eviction, serialization
@@ -183,8 +169,7 @@ src/
 │   ├── cloudflare.js         # Cloudflare baseline plugin
 │   ├── google-cdn.js         # Google CDN manufactured test
 │   └── jsdelivr.js           # jsDelivr CDN manufactured test
-├── workers/
-│   └── test-worker.js        # Web Worker script: executes plugin run()
+
 └── styles/
     └── main.css              # All styles, CSS Custom Properties for theming
 
@@ -256,39 +241,40 @@ registerPlugin(googleCdnPlugin);
 registerPlugin(jsdelivrPlugin);
 ```
 
-### Web Worker Dispatch
+### Sequential Execution
 
-The TestRunner creates one Web Worker per plugin using `test-worker.js`, which acts as a generic executor:
+The TestRunner iterates through registered plugins sequentially on the main thread. Each plugin's `run()` function is called directly and guarded by `Promise.race()` against a timeout:
 
 ```js
-// test-worker.js
-self.onmessage = async (e) => {
-  if (e.data.type === 'run') {
-    const { pluginCode, config, signalPort } = e.data;
-    // pluginCode is the serialized plugin module function
-    // signalPort is a MessageChannel port for AbortSignal proxying
-    
+// test-runner.js
+async function runAll(plugins, config) {
+  const results = [];
+  for (const plugin of plugins) {
     try {
-      const result = await executePlugin(pluginCode, config, signalPort);
-      self.postMessage({ type: 'result', result });
+      const result = await Promise.race([
+        plugin.run(config),
+        timeout(config.timeoutMs, plugin.id)
+      ]);
+      results.push(result);
     } catch (error) {
-      self.postMessage({ type: 'error', error: error.message });
+      results.push(createErrorResult(plugin, error));
     }
   }
-};
+  return results;
+}
 ```
 
-For the sequential fallback (no Web Workers), the TestRunner calls `plugin.run(config, abortSignal)` directly on the main thread.
+Plugins execute one at a time, ensuring each test gets full access to the available bandwidth. This avoids the false-positive throttling signals that arose from parallel Web Worker execution (where plugins competed for bandwidth).
 
 ## Key Design Decisions
 
 ### 1. Plugin execution model
 
-**Decision**: Each plugin's `run()` function is serialized and sent to a Web Worker for execution. The worker is a thin executor that runs the plugin code and posts results back.
+**Decision**: Plugins execute sequentially on the main thread via `Promise.race()` timeout guards. Each plugin's `run()` function is called directly — no serialization, no Workers, no message passing.
 
-**Rationale**: The constitution mandates off-main-thread execution (Principle VI anti-pattern: "Blocking the main thread during speed tests"). Web Workers keep the UI responsive. The "thin executor" approach means plugins are just async functions — they don't need to know about Workers.
+**Rationale**: Parallel Web Worker execution caused false-positive throttling detection: multiple plugins downloading simultaneously competed for the same network bandwidth, artificially lowering individual speed measurements. Sequential execution ensures each plugin gets the full pipe, producing accurate measurements. Main-thread responsiveness is maintained by time-bounded execution (each plugin is capped at `timeoutMs`, default 30s), and the `Promise.race()` pattern ensures no single plugin can hang the runner.
 
-**Tradeoff**: Function serialization (`plugin.run.toString()`) means plugins cannot capture closures over module-level state. This is actually desirable — it forces plugins to be pure functions that only depend on their config parameter.
+**Tradeoff**: Total test duration is now the sum of individual plugin durations rather than the max. For 4 plugins at ~10s each, total runtime is ~40s — well within the SC-001 60s target. The tradeoff of longer total time for significantly more accurate results (eliminating false positives) is the correct engineering decision.
 
 ### 2. Baseline selection
 
@@ -362,7 +348,7 @@ All state changes flow through `ui-manager.js`, which re-renders the appropriate
 | Plugin CORS blocked | Plugin attempts fallback; if all fail, returns `status: 'error'` | Row shows "CORS restricted" error message |
 | Plugin timeout (>30s) | AbortController aborts; plugin returns `status: 'timeout'` | Row shows "Timed out after 30s" |
 | All plugins fail | Runner returns empty results | Full error state: "Unable to determine — tests could not complete" |
-| Web Workers unsupported | Runner falls back to sequential main-thread execution | Notice: "Tests running one at a time (your browser doesn't support parallel testing)" |
+| Web Workers unsupported | N/A — tests always run sequentially on the main thread | No special handling needed |
 | Performance API missing | App detects at startup, shows message | Full error: "Your browser doesn't support the needed performance measurement features" |
 | localStorage full/disabled | HistoryManager returns in-memory fallback | Warning banner: "Cannot save test history — browser storage is full or disabled" |
 | Rapid "Run Test" clicks | Button disabled during run | Button grayed out with "Testing..." label |

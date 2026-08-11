@@ -1,6 +1,20 @@
-# Contract: Web Worker Message Format
+# ⚠️ OBSOLETE — Contract: Web Worker Message Format
 
-**Version**: 1.0.0 | **Feature**: ISP Throttle Detector
+> **STATUS: OBSOLETE as of v1.2.0 (2026-08-10)**
+>
+> This contract is obsolete. Web Workers were removed from the architecture due to
+> false-positive throttling detection caused by parallel bandwidth contention.
+> Plugins now execute sequentially on the main thread via `Promise.race()` timeout guards
+> — no worker dispatch, no message passing, no serialization.
+>
+> See `constitution.md` amendment v1.2.0 and `research.md` §2.0 for the full rationale.
+> This document is preserved for historical reference only.
+
+---
+
+**Version**: 1.0.0 (OBSOLETE) | **Feature**: ISP Throttle Detector
+
+_All content below is historical and no longer valid for the current architecture._
 
 This contract defines the message protocol between the main thread (TestRunner) and Web Workers (plugin executors). All communication uses the `postMessage` API with structured clone-compatible data.
 

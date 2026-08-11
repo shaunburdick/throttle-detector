@@ -1,9 +1,10 @@
 <!--
    Sync Impact Report
    ==================
-   Version change: 1.0.0 → 1.1.0 (amendment: time-based sampling)
-   Modified principles: Technical Decision table — replaced maxPayloadBytes with sampleDurationMs;
-     FR-011 reference updated to reflect time-based sampling
+   Version change: 1.1.0 → 1.2.0 (amendment: serial main-thread execution)
+   Modified principles: Technical Decision table — replaced Web Workers with serial main-thread
+     Promise.race() execution; Anti-Patterns "Blocking the main thread" withdrawn — replaced with
+     timeout-guarded sequential execution
    Added sections: None
    Removed sections: None
    Follow-up TODOs: None
@@ -11,7 +12,7 @@
 
 # ISP Throttle Detector Constitution
 
-> Version: 1.1.0 | Ratified: 2026-08-10 | Last Amended: 2026-08-10
+> Version: 1.2.0 | Ratified: 2026-08-10 | Last Amended: 2026-08-10
 
 ## Core Principles
 
@@ -87,7 +88,7 @@ situation worse or leave them guessing about what went wrong.
 | Framework | Vanilla JS; Preact permitted only if SPA complexity demands it | Keeps payload small; Preact is ~3KB and API-compatible with React |
 | Styling | Plain CSS with CSS Custom Properties (variables) | No preprocessor dependency; variables enable theming and reduce repetition |
 | Speed measurement | Performance API (`performance.now()`, Resource Timing `transferSize`/`duration`) | Built into all modern browsers; no library needed |
-| Concurrency | Web Workers for parallel test execution | Prevents UI blocking during speed tests; Web Workers are universally supported |
+| Concurrency | Serial main-thread execution with `Promise.race()` timeout guards | Parallel Web Workers caused false-positive throttling detection (plugins competed for bandwidth, artificially lowering individual measurements). Sequential execution isolates each test's network usage for accurate measurements. Main-thread responsiveness is maintained via timeout-bounded runs. |
 | CORS workarounds | `new Image()` timing via Performance API as fallback | Some CDNs don't allow `fetch()` but will serve `<img>` resources |
 | Storage | localStorage for test history | Zero-setup persistence; sufficient for the small volume of test result data |
 | Deployment | GitHub Pages | Meets the static-only constraint; free; built-in CDN |
@@ -116,8 +117,9 @@ These are minimum bars — not targets to aim for, but floors to never go below.
 - ❌ Disabling lint rules: Fix the code, not the linter.
 - ❌ Using color as the sole indicator of meaning: Every color-coded result must also have a
   text label or icon.
-- ❌ Blocking the main thread during speed tests: All tests MUST run in Web Workers or
-  equivalent off-main-thread mechanisms.
+- ❌ Running all tests in parallel competing for the same bandwidth: Tests MUST run sequentially
+    to ensure each plugin measures its full available throughput. Parallel execution causes
+   false-positive throttling signals by splitting bandwidth across plugins.
 - ❌ Assuming `fetch()` always works: Every network call must have a CORS fallback strategy.
 - ❌ Using hard byte caps for test duration control: Tests MUST use time-based sampling
   (`sampleDurationMs`) rather than byte-count limits, ensuring consistent accuracy across
@@ -149,3 +151,4 @@ with justification in the PR description.
 |------|---------|--------|-----------|
 | 2026-08-10 | 1.0.0 | Initial ratification | Project inception |
 | 2026-08-10 | 1.1.0 | Time-based sampling replaces byte cap | Byte caps cause under-sampling on fast connections (>1Gbps) and over-consume data on slow connections. Time-based sampling with adaptive payloads auto-scales: each test runs for `sampleDurationMs` (~8-10s), repeatedly downloading chunks of increasing size, then averages all samples for final speed. More accurate, more respectful of metered connections. |
+| 2026-08-10 | 1.2.0 | Serial main-thread execution replaces parallel Web Workers | Parallel Web Workers caused false-positive throttling detection: plugins competing for the same bandwidth artificially lowered individual measurements, making normal connections appear throttled. Switched to sequential main-thread execution with `Promise.race()` timeout guards — each test gets the full pipe, UI stays responsive via bounded execution. Removed `test-worker.js`, `workerCompatible` flag, and all worker serialization infrastructure. |

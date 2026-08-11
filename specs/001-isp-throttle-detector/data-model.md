@@ -45,8 +45,7 @@ The interface every test module must implement. Plugins are stateless — the te
  * @property {function(TestConfig): Promise<TestResult>} run - Execute the speed test.
  *         Receives TestConfig. Returns a TestResult. Must handle all errors internally
  *         (returns TestResult with status:'error', never throws).
- *         The function is serialized and sent to a Web Worker — must not capture
- *         closures over module-level state.
+ *         Runs on the main thread — can use all browser APIs including DOM.
  */
 ```
 
