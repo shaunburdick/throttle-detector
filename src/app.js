@@ -16,6 +16,7 @@ import { runAll } from './lib/test-runner.js';
 import { analyzeResults } from './lib/results-analyzer.js';
 import { presentJson } from './lib/results-presenter.js';
 import { generateRunId } from './lib/utils.js';
+import { bootstrapJsonView } from './lib/json-viewer.js';
 import { save, loadAll, deleteRun, deleteAll } from './lib/history-manager.js';
 import {
     init, setRunning, updateProgress, updatePluginStatus,
@@ -23,13 +24,18 @@ import {
     buildErrorHtml, announce,
 } from './lib/ui-manager.js';
 
-const JSON_EXPORT_KEY = 'throttle-detector-last-result';
+const MAIN_ID = 'main-content';
 
 // ===== Helpers =====
 
 /** @returns {boolean} */
 function isJsonMode() {
     return new URLSearchParams(window.location.search).get('format') === 'json';
+}
+
+/** @returns {boolean} */
+function isViewMode() {
+    return new URLSearchParams(window.location.search).get('view') === 'json';
 }
 
 /** @returns {string[]} */
@@ -230,16 +236,6 @@ async function startTest() {
         });
         const testRun = finalizeTestRun(results, extraWarnings);
 
-        // Store JSON result for in-browser export via ?format=json
-        try {
-            sessionStorage.setItem(
-                JSON_EXPORT_KEY, presentJson(testRun)
-            );
-        } catch {
-            // sessionStorage unavailable — non-critical
-            void 0;
-        }
-
         await persistAndRefreshHistory(testRun);
     } catch (error) {
         showErrorState([`Test run failed: ${error.message || 'Unknown error'}`]);
@@ -380,19 +376,6 @@ function initTheme() {
 }
 
 async function bootstrapJsonMode() {
-    // Check sessionStorage first for the last result (in-browser export path)
-    try {
-        const stored = sessionStorage.getItem(JSON_EXPORT_KEY);
-        if (stored) {
-            sessionStorage.removeItem(JSON_EXPORT_KEY);
-            document.body.textContent = stored;
-            return;
-        }
-    } catch {
-        // sessionStorage unavailable — fall through to history
-        void 0;
-    }
-
     try {
         const history = loadAll();
         if (history.length > 0) {
@@ -460,7 +443,7 @@ async function bootstrap() {
                 error: 'unsupported_browser', message: warnings[0],
             }, null, 2);
         } else {
-            const main = document.getElementById('main-content');
+            const main = document.getElementById(MAIN_ID);
             if (main) {
                 main.innerHTML = buildErrorHtml({
                     icon: '\u26A0\uFE0F',
@@ -469,6 +452,12 @@ async function bootstrap() {
                 });
             }
         }
+        return;
+    }
+
+    // ?view=json takes precedence over ?format=json
+    if (isViewMode()) {
+        bootstrapJsonView(MAIN_ID);
         return;
     }
 
@@ -481,7 +470,7 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-    const main = document.getElementById('main-content');
+    const main = document.getElementById(MAIN_ID);
     if (main) {
         main.innerHTML = buildErrorHtml({
             icon: '\u274C',

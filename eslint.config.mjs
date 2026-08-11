@@ -25,7 +25,6 @@ export default [
                 URL: 'readonly',
                 URLSearchParams: 'readonly',
                 Blob: 'readonly',
-                sessionStorage: 'readonly',
             },
         },
         rules: {

@@ -272,16 +272,16 @@ export function setResults(run) {
 
     const exportHtml = '<div class="export-section">'
         + '<button class="btn btn-primary export-json-btn"'
-        + ' aria-label="View test results as JSON">'
+        + ' aria-label="View test results in a formatted JSON viewer">'
         + 'Export JSON</button></div>';
 
     area.innerHTML = checklistHtml + presentHtml(run) + exportHtml;
 
-    // Wire export button — navigates to ?format=json for in-browser display
+    // Wire export button — navigates to ?view=json&id={runId} for formatted HTML display
     const exportBtn = area.querySelector('.export-json-btn');
     if (exportBtn) {
         exportBtn.addEventListener('click', () => {
-            window.location.href = '/?format=json';
+            window.location.href = `/?view=json&id=${encodeURIComponent(run.runId)}`;
         });
     }
 
